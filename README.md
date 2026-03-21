@@ -1,6 +1,6 @@
 # KV Compression Benchmark
 
-A comprehensive benchmark for evaluating KV cache compression methods on large language models, specifically testing Expected Attention and KVZip compression techniques on Llama 3.1 8B Instruct.
+A comprehensive benchmark for evaluating KV cache compression methods on large language models, specifically testing Expected Attention and KVzip (`KVzipPress`) compression techniques on Llama 3.1 8B Instruct.
 
 ## Overview
 
@@ -46,12 +46,12 @@ You need a Hugging Face account and token to access the Llama 3.1 model:
 3. **Library Optimization**: Update bitsandbytes for quantization support
 4. **Model Loading**: Load Llama 3.1 8B with 4-bit quantization
 5. **Query Definition**: Define filter and extraction queries for movie reviews
-6. **Compression Testing**: Test Expected Attention and KVZip compression methods
+6. **Compression Testing**: Test Expected Attention and KVzip (`KVzipPress`) compression methods
 7. **Benchmark Evaluation**: Comprehensive evaluation across multiple compression ratios
 
 ## Features
 
-- **Multiple Compression Methods**: Expected Attention, KVZip
+- **Multiple Compression Methods**: Expected Attention, KVzip (`KVzipPress` — note the lowercase `z` in `zip`)
 - **Flexible Compression Ratios**: Test from 10% to 90% compression
 - **Dual Task Types**: 
   - Filter queries (yes/no questions)
