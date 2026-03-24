@@ -41,13 +41,13 @@ You need a Hugging Face account and token to access the Llama 3.1 model:
 
 ## Notebook Structure
 
-1. **Environment Setup**: Clone kvpress repository and install dependencies
+1. **Environment Setup**: Clone [NVIDIA/kvpress](https://github.com/NVIDIA/kvpress) and install in editable mode (works with Colab **transformers 5.x** / `DynamicCache` without patching). If the course links [GabrieleSanmartino/kvpress](https://github.com/GabrieleSanmartino/kvpress), it is the same upstream line; NVIDIA `main` is typically newer.
 2. **Authentication**: Login to Hugging Face Hub
 3. **Library Optimization**: Update bitsandbytes for quantization support
 4. **Model Loading**: Load Llama 3.1 8B with 4-bit quantization
 5. **Query Definition**: Define filter and extraction queries for movie reviews
-6. **Compression Testing**: Test Expected Attention and KVzip (`KVzipPress`) compression methods
-7. **Benchmark Evaluation**: Comprehensive evaluation across multiple compression ratios
+6. **Compression Testing**: Smoke test Expected Attention vs KVzip (`KVzipPress`)
+7. **Benchmark protocol**: Instructor settings — ratios in `[0.2, 0.9]`, optional CSV of ~1000 reviews (sample 5–10%), optional query subsampling; full grid is commented out (slow, especially KVzip)
 
 ## Features
 
@@ -89,6 +89,6 @@ This project is for educational and research purposes.
 
 ## Acknowledgments
 
-- [kvpress](https://github.com/GabrieleSanmartino/kvpress) - KV cache compression library
+- [NVIDIA/kvpress](https://github.com/NVIDIA/kvpress) - KV cache compression library (upstream; course may reference [GabrieleSanmartino/kvpress](https://github.com/GabrieleSanmartino/kvpress))
 - Meta AI - Llama 3.1 model
 - Hugging Face - Model hosting and transformers library
