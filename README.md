@@ -42,12 +42,13 @@ You need a Hugging Face account and token to access the Llama 3.1 model:
 ## Notebook Structure
 
 1. **Environment Setup**: Clone [NVIDIA/kvpress](https://github.com/NVIDIA/kvpress) and install in editable mode (works with Colab **transformers 5.x** / `DynamicCache` without patching). If the course links [GabrieleSanmartino/kvpress](https://github.com/GabrieleSanmartino/kvpress), it is the same upstream line; NVIDIA `main` is typically newer.
-2. **Authentication**: Login to Hugging Face Hub
-3. **Library Optimization**: Update bitsandbytes for quantization support
-4. **Model Loading**: Load Llama 3.1 8B with 4-bit quantization
-5. **Query Definition**: Define filter and extraction queries for movie reviews
-6. **Compression Testing**: Smoke test Expected Attention vs KVzip (`KVzipPress`)
-7. **Benchmark protocol**: Instructor settings — ratios in `[0.2, 0.9]`, optional CSV of ~1000 reviews (sample 5–10%), optional query subsampling; full grid is commented out (slow, especially KVzip)
+2. **Step 1b (Colab)**: Run the small monkeypatch cell after install if you see `DynamicCache` / `key_cache` errors with **ExpectedAttention** or **KVzip** under `model.generate`—some stacks mis-detect `QuantizedCache` on the container; the patch branches on per-layer `QuantizedLayer` instead.
+3. **Authentication**: Login to Hugging Face Hub
+4. **Library Optimization**: Update bitsandbytes for quantization support
+5. **Model Loading**: Load Llama 3.1 8B with 4-bit quantization
+6. **Query Definition**: Define filter and extraction queries for movie reviews
+7. **Compression Testing**: Smoke test Expected Attention vs KVzip (`KVzipPress`)
+8. **Benchmark protocol**: Instructor settings — ratios in `[0.2, 0.9]`, optional CSV of ~1000 reviews (sample 5–10%), optional query subsampling; full grid is commented out (slow, especially KVzip)
 
 ## Features
 
