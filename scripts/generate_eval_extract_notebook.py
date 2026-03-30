@@ -30,10 +30,9 @@ Self-contained for **Google Colab** (open this notebook from GitHub: *File → O
 
 ## Data (scheme B)
 
-1. Zip your `movie-results/movie-results/` folder (must contain `query_010.csv` … `query_019.csv`).
-2. In Colab, upload the zip to `/content/` and unzip so you have:
-   `/content/movie-results/movie-results/query_010.csv`, etc.
-3. If paths differ, set `MOVIE_RESULTS_DIR` in the config cell below.
+1. Collect `query_010.csv` … `query_019.csv` in one folder (e.g. upload that folder or a zip to Colab).
+2. **Typical Colab layout**: put CSVs directly under **`/content/movie_result/`** (see left file browser). The notebook defaults to that path.
+3. If your folder name differs (e.g. nested `movie-results/movie-results/`), set **`MOVIE_RESULTS_DIR`** in the config cell.
 
 ## Robustness
 
@@ -186,7 +185,8 @@ print("Model loaded.")
 - Default: mount **Google Drive**; checkpoints + `extract_runs.csv` + figures live under  
   **`MyDrive/kv-compression-benchmark/extract_eval/`** (auto-created).
 - Set **`USE_GOOGLE_DRIVE = False`** to use **`/content/extract_eval_workspace/`** only (cleared on some disconnects).
-- Edit **`MOVIE_RESULTS_DIR`**, **`SAMPLE_FRAC`**, **`SMOKE_MAX_ROWS`**, **`RESUME_FROM_CHECKPOINT`** in the next cell.
+- Default **`MOVIE_RESULTS_DIR`** on Colab: **`/content/movie_result`** (CSVs next to each other as `query_010.csv`, …).
+- Edit **`SAMPLE_FRAC`**, **`SMOKE_MAX_ROWS`**, **`RESUME_FROM_CHECKPOINT`** in the next cell.
 """
     ),
     code(
@@ -232,7 +232,7 @@ OUT_DIR = RUN_DIR / "figures"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 if RUN_ON_COLAB:
-    MOVIE_RESULTS_DIR = Path("/content/movie-results/movie-results")
+    MOVIE_RESULTS_DIR = Path("/content/movie_result")
 else:
     MOVIE_RESULTS_DIR = Path("movie-results/movie-results")
 
@@ -288,7 +288,7 @@ def preflight(movie_dir: Path) -> list[int]:
     if missing:
         raise FileNotFoundError(
             f"Missing CSV files for queries {missing} under {movie_dir}. "
-            "Upload/unzip movie-results so query_010.csv … query_019.csv exist."
+            "Upload CSVs to Colab (e.g. /content/movie_result/query_010.csv … query_019.csv)."
         )
     if torch.cuda.is_available():
         print("CUDA:", torch.cuda.get_device_name(0))
