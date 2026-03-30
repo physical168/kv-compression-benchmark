@@ -47,3 +47,13 @@ kvpress/
 
 # Logs
 *.log
+
+# Local / Colab data & artifacts (keep out of Git)
+movie-results/
+movie-results.zip
+reviews_1000.csv
+benchmark_runs.csv
+figures/
+extract_eval_output/
+**/extract_predictions_checkpoint.csv
+**/extract_runs.csv

@@ -49,6 +49,8 @@ You need a Hugging Face account and token to access the Llama 3.1 model:
 6. **Query Definition**: Define filter and extraction queries for movie reviews
 7. **Compression Testing**: Smoke test Expected Attention vs KVzip (`KVzipPress`)
 8. **Benchmark protocol**: Instructor settings — ratios in `[0.2, 0.9]`, optional CSV of ~1000 reviews (sample 5–10%), optional query subsampling; full grid is commented out (slow, especially KVzip)
+9. **`analyze_benchmark.ipynb`**: Load `benchmark_runs.csv`, English narrative, and plots (also see `analyze_benchmark.py` for CLI)
+10. **`eval_extract.ipynb`**: Colab‑first notebook for **extract tasks only** (`query_010`–`019`). Upload/unzip data to `/content/movie-results/movie-results/`. By default it mounts **Google Drive** and writes **`MyDrive/kv-compression-benchmark/extract_eval/`** (`extract_predictions_checkpoint.csv`, `extract_runs.csv`, `figures/`). Use **`SMOKE_MAX_ROWS=3`** for a quick smoke test (3 rows per query), then **`0`** for the full sampled run. Open in Colab: [`eval_extract.ipynb`](https://colab.research.google.com/github/physical168/kv-compression-benchmark/blob/main/eval_extract.ipynb). Regenerate the notebook: `python scripts/generate_eval_extract_notebook.py`.
 
 ## Features
 
