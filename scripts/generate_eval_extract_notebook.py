@@ -36,9 +36,12 @@ Self-contained for **Google Colab** (open this notebook from GitHub: *File → O
 
 ## Robustness
 
-- **Smoke test (`SMOKE_MAX_ROWS`)**: For example **`SMOKE_MAX_ROWS = 3`** means: after `SAMPLE_FRAC` sampling, only the **first 3 rows per query** (`query_010`…`019`) are sent through the model. Use this to verify Colab (GPU, kvpress, CSV paths) in a few minutes; then set **`SMOKE_MAX_ROWS = 0`** for the real run on the full sample.
-- **Checkpoints**: Written under **`RUN_DIR`**. With **`USE_GOOGLE_DRIVE = True`** (Colab), that is a folder on **Google Drive** so disconnects do not wipe progress (see config cell).
-- Set `RESUME_FROM_CHECKPOINT = True` to skip finished `(query_id, row_key, ratio, method)` pairs.
+- **Why KVzip feels slow**: `KVzipPress` does **multiple forward passes** per token (see library warnings). On **T4**, **~60–120 s per `(row, ratio)`** is common; **Expected Attention** is usually much faster. Tip: set **`ENABLE_KVZIP = False`** in the config cell to draw an **EA-only** curve first, or shrink **`COMPRESSION_RATIOS`** to 2–3 values, then turn KVzip back on for the final run (use Drive checkpoint + resume).
+
+- **Rows per query (`MAX_ROWS_PER_QUERY`)**: Default **20** rows sampled uniformly from each CSV (sleep / short Colab sessions). Set **`MAX_ROWS_PER_QUERY = 0`** to use **`SAMPLE_FRAC`** only (no hard cap).
+- **Smoke test (`SMOKE_MAX_ROWS`)**: **`SMOKE_MAX_ROWS = 3`** further caps to the first 3 rows after the above sampling. Use for a quick pipeline check.
+- **Checkpoints**: Each finished `(row, ratio, method)` is appended with flush to **`extract_predictions_checkpoint.csv`** under **`RUN_DIR`**. Set **`USE_GOOGLE_DRIVE = True`** and mount Drive so **Colab timeout / sleep / disconnect** does not lose disk progress.
+- Set **`RESUME_FROM_CHECKPOINT = True`**, then after reconnect run **Step 1 → … → model load → inference** again; the loop skips keys already in the checkpoint.
 - After inference completes, **re-run only the metrics/plots cells** if you change parsing (no full re-generate).
 
 ## Order
@@ -241,10 +244,17 @@ print("CHECKPOINT_PATH:", CHECKPOINT_PATH.resolve())
 print("OUT_DIR:", OUT_DIR.resolve())
 
 # --- Run knobs ---
+# If MAX_ROWS_PER_QUERY > 0: that many rows per query (uniform random). If 0: use SAMPLE_FRAC only.
+MAX_ROWS_PER_QUERY = 20
 SAMPLE_FRAC = 0.08
+# Full grid (slow on T4 with KVzip). Faster preset e.g. [0.2, 0.5, 0.9] or [0.4, 0.8].
 COMPRESSION_RATIOS = [0.2, 0.4, 0.6, 0.8, 0.9]
 MAX_NEW_TOKENS = 96
 RANDOM_SEED = 42
+
+# KVzip is much slower per call than EA; set False to benchmark EA only (or debug pipeline).
+ENABLE_EXPECTED_ATTENTION = True
+ENABLE_KVZIP = True
 
 # Smoke: e.g. 3 = only first 3 rows per query (quick test). 0 = full sampled run.
 SMOKE_MAX_ROWS = 0
@@ -460,7 +470,7 @@ print("Helpers ready.")
     md(
         """### Inference loop (checkpointed)
 
-**Long run.** Ensure `SMOKE_MAX_ROWS` was tested first. Safe to stop/restart with `RESUME_FROM_CHECKPOINT = True`.
+**Checkpointed:** each row commits to disk (Drive if mounted). Safe if Colab disconnects — reconnect, run setup + model load + this cell with `RESUME_FROM_CHECKPOINT = True`. Quick test: `SMOKE_MAX_ROWS = 3`.
 """
     ),
     code(
@@ -470,8 +480,13 @@ print("Helpers ready.")
 base_path = MOVIE_RESULTS_DIR / "query_010.csv"
 df0 = pd.read_csv(base_path, dtype=str)
 df0_idx = df0.index.tolist()
-n = max(1, int(len(df0_idx) * SAMPLE_FRAC))
-idx_sample = sorted(random.sample(df0_idx, min(n, len(df0_idx))))
+if MAX_ROWS_PER_QUERY and MAX_ROWS_PER_QUERY > 0:
+    n = min(MAX_ROWS_PER_QUERY, len(df0_idx))
+else:
+    n = max(1, int(len(df0_idx) * SAMPLE_FRAC))
+    n = min(n, len(df0_idx))
+idx_sample = sorted(random.sample(df0_idx, n))
+print("Rows per query:", len(idx_sample), "(MAX_ROWS_PER_QUERY=", MAX_ROWS_PER_QUERY, ")", flush=True)
 if SMOKE_MAX_ROWS and SMOKE_MAX_ROWS > 0:
     idx_sample = idx_sample[: SMOKE_MAX_ROWS]
     print("SMOKE MODE: using", len(idx_sample), "rows per query")
@@ -479,7 +494,15 @@ if SMOKE_MAX_ROWS and SMOKE_MAX_ROWS > 0:
 done = load_done_keys(CHECKPOINT_PATH)
 print("Resume: skipping", len(done), "completed keys from checkpoint")
 
-methods = [("ea", ExpectedAttentionPress), ("kvzip", KVzipPress)]
+methods = []
+if ENABLE_EXPECTED_ATTENTION:
+    methods.append(("ea", ExpectedAttentionPress))
+if ENABLE_KVZIP:
+    methods.append(("kvzip", KVzipPress))
+if not methods:
+    raise ValueError("Enable at least one of ENABLE_EXPECTED_ATTENTION / ENABLE_KVZIP")
+
+print("Methods:", [m[0] for m in methods], "| ratios:", COMPRESSION_RATIOS)
 
 for qid in tqdm(QUERY_IDS, desc="queries"):
     path = MOVIE_RESULTS_DIR / f"query_{qid:03d}.csv"
