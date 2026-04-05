@@ -38,9 +38,11 @@ Self-contained for **Google Colab** (open this notebook from GitHub: *File → O
 
 - **Why KVzip feels slow**: `KVzipPress` does **multiple forward passes** per token (see library warnings). On **T4**, **~60–120 s per `(row, ratio)`** is common; **Expected Attention** is usually much faster. Tip: set **`ENABLE_KVZIP = False`** in the config cell to draw an **EA-only** curve first, or shrink **`COMPRESSION_RATIOS`** to 2–3 values, then turn KVzip back on for the final run (use Drive checkpoint + resume).
 
-- **Rows per query (`MAX_ROWS_PER_QUERY`)**: Default **80** rows sampled uniformly from each `query_010.csv` (aligned index reused for 011–012 when row counts match). Set **`MAX_ROWS_PER_QUERY = 0`** to use **`SAMPLE_FRAC`** only (no hard cap).
+- **Rows per query (`MAX_ROWS_PER_QUERY`)**: Default **120** rows sampled uniformly from each `query_010.csv` (aligned index reused for 011–012 when row counts match). Set **`MAX_ROWS_PER_QUERY = 0`** to use **`SAMPLE_FRAC`** only (no hard cap).
+- **Compression ratios**: Default **3** values (`COMPRESSION_RATIOS` in config)—fewer ratio points than a dense grid to save wall time; edit the list as needed.
 - **Smoke test (`SMOKE_MAX_ROWS`)**: **`SMOKE_MAX_ROWS = 3`** further caps to the first 3 rows after the above sampling. Use for a quick pipeline check.
-- **Checkpoints**: Each finished `(row, ratio, method)` is appended with flush to **`extract_predictions_checkpoint.csv`** under **`RUN_DIR`**. **Step 2b** mounts Drive (if enabled) before loading the model; default **`DRIVE_SUBDIR`** is **`kv-compression-benchmark/extract_eval_v2_q10_12`** so this notebook does not resume from the older 010–019 checkpoint path—change it if you intentionally want to share a folder.
+- **Attention**: This notebook installs **`flash-attn`** and loads Llama with **`attn_implementation="flash_attention_2"`**. That typically needs **Ampere+ (e.g. L4 / A100, sm80+)**. **Colab T4 (sm75)** often cannot build or run it—if install or `from_pretrained` fails, edit **Step 4** to use **`attn_implementation="sdpa"`** instead (or remove the argument).
+- **Checkpoints**: Each finished `(row, ratio, method)` is appended with flush to **`extract_predictions_checkpoint.csv`** under **`RUN_DIR`**. **Step 2b** mounts Drive (if enabled) before loading the model; default **`DRIVE_SUBDIR`** is **`kv-compression-benchmark/extract_eval_v2_q10_12_fa2`** (separate from earlier v2 runs). Change it if you mix experiments and want a fresh folder.
 - Set **`RESUME_FROM_CHECKPOINT = True`**, then after reconnect run **Step 1 → … → Step 2b → model load → inference** again; the loop skips keys already in the checkpoint.
 - After inference completes, **re-run only the metrics/plots cells** if you change parsing (no full re-generate).
 
@@ -166,8 +168,8 @@ import os
 
 RUN_ON_COLAB = os.path.isdir("/content")
 USE_GOOGLE_DRIVE = True
-# Distinct folder so v2 (010–012) does not resume from older 010–019 checkpoints.
-DRIVE_SUBDIR = "kv-compression-benchmark/extract_eval_v2_q10_12"
+# Distinct folder: v2 q10–12 + FlashAttention / new ratio grid (avoid mixing checkpoints with older v2).
+DRIVE_SUBDIR = "kv-compression-benchmark/extract_eval_v2_q10_12_fa2"
 
 if RUN_ON_COLAB and USE_GOOGLE_DRIVE:
     try:
@@ -203,7 +205,22 @@ print("OUT_DIR:", OUT_DIR.resolve())
         """!pip install -q -U bitsandbytes>=0.46.1
 """
     ),
-    md("### Step 4: Load Llama 3.1 8B 4-bit"),
+    md(
+        """### Step 3b: Flash Attention 2 (`flash-attn`)
+
+Install before loading the model. On Colab this can take **several minutes** (compiles from source). If this cell fails on **T4**, use a **L4 / A100** runtime or skip Flash Attention and set **`attn_implementation="sdpa"`** in Step 4.
+"""
+    ),
+    code(
+        """!pip install flash-attn --no-build-isolation
+"""
+    ),
+    md(
+        """### Step 4: Load Llama 3.1 8B 4-bit (Flash Attention 2)
+
+Uses **`torch_dtype=torch.float16`** and **`attn_implementation="flash_attention_2"`** so attention is **not** SDPA. On unsupported GPUs, change Step 4 code to **`attn_implementation="sdpa"`**.
+"""
+    ),
     code(
         """import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
@@ -217,11 +234,13 @@ bnb_config = BitsAndBytesConfig(
 )
 
 tokenizer = AutoTokenizer.from_pretrained(model_id)
+# T4 / flash-attn build failure: use attn_implementation="sdpa" instead.
 model = AutoModelForCausalLM.from_pretrained(
     model_id,
     device_map="auto",
     quantization_config=bnb_config,
-    dtype=torch.float16,
+    torch_dtype=torch.float16,
+    attn_implementation="flash_attention_2",
 )
 print("Model loaded.")
 """
@@ -233,7 +252,7 @@ print("Model loaded.")
 
 - Default **`MOVIE_RESULTS_DIR`** on Colab: **`/content/movie_result`** (`query_010.csv` … `query_012.csv` for this notebook).
 - This notebook runs **`QUERY_IDS_TO_RUN = [10, 11, 12]`** only; change that list if you want other extract tasks (must match available CSVs and task prompts).
-- Edit **`SAMPLE_FRAC`**, **`SMOKE_MAX_ROWS`**, **`RESUME_FROM_CHECKPOINT`** below.
+- Defaults: **`MAX_ROWS_PER_QUERY = 120`**, **`COMPRESSION_RATIOS = [0.2, 0.5, 0.8]`** (edit below). Also **`SAMPLE_FRAC`**, **`SMOKE_MAX_ROWS`**, **`RESUME_FROM_CHECKPOINT`**.
 """
     ),
     code(
@@ -257,10 +276,10 @@ else:
 
 # --- Run knobs ---
 # If MAX_ROWS_PER_QUERY > 0: that many rows per query (uniform random). If 0: use SAMPLE_FRAC only.
-MAX_ROWS_PER_QUERY = 80
+MAX_ROWS_PER_QUERY = 120
 SAMPLE_FRAC = 0.08
-# Full grid (slow on T4 with KVzip). Faster preset e.g. [0.2, 0.5, 0.9] or [0.4, 0.8].
-COMPRESSION_RATIOS = [0.2, 0.4, 0.6, 0.8, 0.9]
+# Fewer ratio points than a dense grid (saves time); expand if you need finer curves.
+COMPRESSION_RATIOS = [0.2, 0.5, 0.8]
 MAX_NEW_TOKENS = 96
 RANDOM_SEED = 42
 
