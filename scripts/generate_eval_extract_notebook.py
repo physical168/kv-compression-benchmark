@@ -1,4 +1,4 @@
-"""One-off generator for eval_extract.ipynb — run from repo root: python scripts/generate_eval_extract_notebook.py"""
+"""Generator for eval_extract_v2.ipynb — run from repo root: python scripts/generate_eval_extract_notebook.py"""
 from __future__ import annotations
 
 import json
@@ -20,17 +20,17 @@ def code(text: str) -> dict:
 
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "eval_extract.ipynb"
+OUT = ROOT / "eval_extract_v2.ipynb"
 
 cells = [
     md(
-        """# Extract evaluation (query_010–019): EA vs KVzip
+        """# Extract evaluation v2 (query_010–012): EA vs KVzip
 
 Self-contained for **Google Colab** (open this notebook from GitHub: *File → Open notebook → GitHub*).
 
 ## Data (scheme B)
 
-1. Collect `query_010.csv` … `query_019.csv` in one folder (e.g. upload that folder or a zip to Colab).
+1. This run uses **`query_010.csv` … `query_012.csv`** only (3 extract tasks). Your zip or folder may contain more CSVs; only these three must be present.
 2. **Typical Colab layout**: put CSVs directly under **`/content/movie_result/`** (see left file browser). The notebook defaults to that path.
 3. If your folder name differs (e.g. nested `movie-results/movie-results/`), set **`MOVIE_RESULTS_DIR`** in the config cell.
 
@@ -38,15 +38,15 @@ Self-contained for **Google Colab** (open this notebook from GitHub: *File → O
 
 - **Why KVzip feels slow**: `KVzipPress` does **multiple forward passes** per token (see library warnings). On **T4**, **~60–120 s per `(row, ratio)`** is common; **Expected Attention** is usually much faster. Tip: set **`ENABLE_KVZIP = False`** in the config cell to draw an **EA-only** curve first, or shrink **`COMPRESSION_RATIOS`** to 2–3 values, then turn KVzip back on for the final run (use Drive checkpoint + resume).
 
-- **Rows per query (`MAX_ROWS_PER_QUERY`)**: Default **20** rows sampled uniformly from each CSV (sleep / short Colab sessions). Set **`MAX_ROWS_PER_QUERY = 0`** to use **`SAMPLE_FRAC`** only (no hard cap).
+- **Rows per query (`MAX_ROWS_PER_QUERY`)**: Default **80** rows sampled uniformly from each `query_010.csv` (aligned index reused for 011–012 when row counts match). Set **`MAX_ROWS_PER_QUERY = 0`** to use **`SAMPLE_FRAC`** only (no hard cap).
 - **Smoke test (`SMOKE_MAX_ROWS`)**: **`SMOKE_MAX_ROWS = 3`** further caps to the first 3 rows after the above sampling. Use for a quick pipeline check.
-- **Checkpoints**: Each finished `(row, ratio, method)` is appended with flush to **`extract_predictions_checkpoint.csv`** under **`RUN_DIR`**. Set **`USE_GOOGLE_DRIVE = True`** and mount Drive so **Colab timeout / sleep / disconnect** does not lose disk progress.
-- Set **`RESUME_FROM_CHECKPOINT = True`**, then after reconnect run **Step 1 → … → model load → inference** again; the loop skips keys already in the checkpoint.
+- **Checkpoints**: Each finished `(row, ratio, method)` is appended with flush to **`extract_predictions_checkpoint.csv`** under **`RUN_DIR`**. **Step 2b** mounts Drive (if enabled) before loading the model; default **`DRIVE_SUBDIR`** is **`kv-compression-benchmark/extract_eval_v2_q10_12`** so this notebook does not resume from the older 010–019 checkpoint path—change it if you intentionally want to share a folder.
+- Set **`RESUME_FROM_CHECKPOINT = True`**, then after reconnect run **Step 1 → … → Step 2b → model load → inference** again; the loop skips keys already in the checkpoint.
 - After inference completes, **re-run only the metrics/plots cells** if you change parsing (no full re-generate).
 
 ## Order
 
-Run cells **top to bottom** once; then you can re-run from the metrics cell onward.
+Run cells **top to bottom** once; then you can re-run from the metrics cell onward. **Configuration** assumes **Step 2b** has already set **`RUN_DIR`** / **`CHECKPOINT_PATH`** / **`OUT_DIR`**.
 """
     ),
     md(
@@ -154,6 +154,50 @@ print("kvpress Step 1b patch applied.")
 notebook_login()
 """
     ),
+    md(
+        """### Step 2b: Google Drive — mount and set `RUN_DIR`
+
+Runs **before** loading the model so checkpoints and figures are on Drive as soon as training starts. Edit **`USE_GOOGLE_DRIVE`** / **`DRIVE_SUBDIR`** here (local: always uses **`extract_eval_output`** under the current working directory).
+"""
+    ),
+    code(
+        """from pathlib import Path
+import os
+
+RUN_ON_COLAB = os.path.isdir("/content")
+USE_GOOGLE_DRIVE = True
+# Distinct folder so v2 (010–012) does not resume from older 010–019 checkpoints.
+DRIVE_SUBDIR = "kv-compression-benchmark/extract_eval_v2_q10_12"
+
+if RUN_ON_COLAB and USE_GOOGLE_DRIVE:
+    try:
+        from google.colab import drive
+
+        drive.mount("/content/drive", force_remount=False)
+    except ImportError:
+        USE_GOOGLE_DRIVE = False
+        print("google.colab not found; using local /content workspace only.")
+
+if RUN_ON_COLAB and USE_GOOGLE_DRIVE and Path("/content/drive/MyDrive").is_dir():
+    RUN_DIR = Path("/content/drive/MyDrive") / DRIVE_SUBDIR
+elif RUN_ON_COLAB and USE_GOOGLE_DRIVE:
+    print("WARN: Google Drive not mounted; using /content/extract_eval_workspace (session may reset).")
+    RUN_DIR = Path("/content/extract_eval_workspace")
+elif RUN_ON_COLAB:
+    RUN_DIR = Path("/content/extract_eval_workspace")
+else:
+    RUN_DIR = Path("extract_eval_output")
+
+RUN_DIR.mkdir(parents=True, exist_ok=True)
+CHECKPOINT_PATH = RUN_DIR / "extract_predictions_checkpoint.csv"
+OUT_DIR = RUN_DIR / "figures"
+OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+print("RUN_DIR:", RUN_DIR.resolve())
+print("CHECKPOINT_PATH:", CHECKPOINT_PATH.resolve())
+print("OUT_DIR:", OUT_DIR.resolve())
+"""
+    ),
     md("### Step 3: bitsandbytes (Colab)"),
     code(
         """!pip install -q -U bitsandbytes>=0.46.1
@@ -183,13 +227,13 @@ print("Model loaded.")
 """
     ),
     md(
-        """### Configuration: Drive folder, data path, sampling
+        """### Configuration: data path, sampling, query list
 
-- Default: mount **Google Drive**; checkpoints + `extract_runs.csv` + figures live under  
-  **`MyDrive/kv-compression-benchmark/extract_eval/`** (auto-created).
-- Set **`USE_GOOGLE_DRIVE = False`** to use **`/content/extract_eval_workspace/`** only (cleared on some disconnects).
-- Default **`MOVIE_RESULTS_DIR`** on Colab: **`/content/movie_result`** (CSVs next to each other as `query_010.csv`, …).
-- Edit **`SAMPLE_FRAC`**, **`SMOKE_MAX_ROWS`**, **`RESUME_FROM_CHECKPOINT`** in the next cell.
+**Requires Step 2b** so **`RUN_DIR`**, **`CHECKPOINT_PATH`**, and **`OUT_DIR`** already exist.
+
+- Default **`MOVIE_RESULTS_DIR`** on Colab: **`/content/movie_result`** (`query_010.csv` … `query_012.csv` for this notebook).
+- This notebook runs **`QUERY_IDS_TO_RUN = [10, 11, 12]`** only; change that list if you want other extract tasks (must match available CSVs and task prompts).
+- Edit **`SAMPLE_FRAC`**, **`SMOKE_MAX_ROWS`**, **`RESUME_FROM_CHECKPOINT`** below.
 """
     ),
     code(
@@ -205,47 +249,15 @@ from pathlib import Path
 import pandas as pd
 import torch
 
-# --- Google Drive (Colab): keeps checkpoint + CSV + figures after disconnect ---
 RUN_ON_COLAB = os.path.isdir("/content")
-USE_GOOGLE_DRIVE = True
-DRIVE_SUBDIR = "kv-compression-benchmark/extract_eval"  # under MyDrive
-
-if RUN_ON_COLAB and USE_GOOGLE_DRIVE:
-    try:
-        from google.colab import drive
-
-        drive.mount("/content/drive", force_remount=False)
-    except ImportError:
-        USE_GOOGLE_DRIVE = False
-        print("google.colab not found; using local /content workspace only.")
-
-if RUN_ON_COLAB and USE_GOOGLE_DRIVE and Path("/content/drive/MyDrive").is_dir():
-    RUN_DIR = Path("/content/drive/MyDrive") / DRIVE_SUBDIR
-elif RUN_ON_COLAB and USE_GOOGLE_DRIVE:
-    print("WARN: Google Drive not mounted; using /content/extract_eval_workspace (session may reset).")
-    RUN_DIR = Path("/content/extract_eval_workspace")
-elif RUN_ON_COLAB:
-    RUN_DIR = Path("/content/extract_eval_workspace")
-else:
-    RUN_DIR = Path("extract_eval_output")
-
-RUN_DIR.mkdir(parents=True, exist_ok=True)
-CHECKPOINT_PATH = RUN_DIR / "extract_predictions_checkpoint.csv"
-OUT_DIR = RUN_DIR / "figures"
-OUT_DIR.mkdir(parents=True, exist_ok=True)
-
 if RUN_ON_COLAB:
     MOVIE_RESULTS_DIR = Path("/content/movie_result")
 else:
     MOVIE_RESULTS_DIR = Path("movie-results/movie-results")
 
-print("RUN_DIR:", RUN_DIR.resolve())
-print("CHECKPOINT_PATH:", CHECKPOINT_PATH.resolve())
-print("OUT_DIR:", OUT_DIR.resolve())
-
 # --- Run knobs ---
 # If MAX_ROWS_PER_QUERY > 0: that many rows per query (uniform random). If 0: use SAMPLE_FRAC only.
-MAX_ROWS_PER_QUERY = 20
+MAX_ROWS_PER_QUERY = 80
 SAMPLE_FRAC = 0.08
 # Full grid (slow on T4 with KVzip). Faster preset e.g. [0.2, 0.5, 0.9] or [0.4, 0.8].
 COMPRESSION_RATIOS = [0.2, 0.4, 0.6, 0.8, 0.9]
@@ -260,7 +272,9 @@ ENABLE_KVZIP = True
 SMOKE_MAX_ROWS = 0
 RESUME_FROM_CHECKPOINT = True
 
-extract_queries = [
+QUERY_IDS_TO_RUN = [10, 11, 12]
+
+_EXTRACT_QUERY_TEXTS = [
     "Extract the sentiment of the review (positive or negative):",
     "Extract the movie title mentioned in the review:",
     "Extract one actor that is praised particularly in the review (or 'none' if no actor is praised):",
@@ -272,6 +286,7 @@ extract_queries = [
     "Extract whether the reviewer compares the movie to another film (yes/no):",
     "Extract the target audience implied or stated (e.g., families, children, adults, fans of action, or 'none'):",
 ]
+TASK_BY_QUERY_ID = {10 + i: t for i, t in enumerate(_EXTRACT_QUERY_TEXTS)}
 
 
 def build_prompt(review_text: str, task: str) -> str:
@@ -289,25 +304,26 @@ def stable_row_key(row: pd.Series) -> str:
     return f"{rid}|{ir}"
 
 
-def preflight(movie_dir: Path) -> list[int]:
+def preflight(movie_dir: Path, qids: list[int]) -> list[int]:
     missing = []
-    for q in range(10, 20):
+    for q in qids:
         p = movie_dir / f"query_{q:03d}.csv"
         if not p.is_file():
             missing.append(q)
     if missing:
         raise FileNotFoundError(
             f"Missing CSV files for queries {missing} under {movie_dir}. "
-            "Upload CSVs to Colab (e.g. /content/movie_result/query_010.csv … query_019.csv)."
+            "Upload CSVs to Colab (e.g. /content/movie_result/query_010.csv … query_012.csv)."
         )
     if torch.cuda.is_available():
         print("CUDA:", torch.cuda.get_device_name(0))
     else:
         print("WARNING: no CUDA — inference will be very slow.")
-    return list(range(10, 20))
+    return list(qids)
 
 
-QUERY_IDS = preflight(MOVIE_RESULTS_DIR)
+QUERY_IDS = preflight(MOVIE_RESULTS_DIR, QUERY_IDS_TO_RUN)
+print("QUERY_IDS:", QUERY_IDS)
 print("MOVIE_RESULTS_DIR:", MOVIE_RESULTS_DIR.resolve())
 print("CHECKPOINT_PATH:", CHECKPOINT_PATH.resolve())
 """
@@ -392,6 +408,17 @@ def parse_yes_no(text: str) -> str | None:
     return None
 
 
+def gold_to_yes_no(raw: str) -> str | None:
+    t = norm_ws(str(raw).strip())
+    if t in ("yes", "no"):
+        return t
+    if t in ("true", "1"):
+        return "yes"
+    if t in ("false", "0"):
+        return "no"
+    return parse_yes_no(str(raw))
+
+
 def parse_sentiment(text: str) -> str | None:
     t = norm_ws(text)
     for w in ("mixed", "neutral", "positive", "negative"):
@@ -442,8 +469,7 @@ def score_pair(query_id: int, pred: str, gold: str) -> tuple[float, str]:
     gold_s = str(gold).strip()
     if query_id in (14, 17, 18):
         pg = parse_yes_no(pred)
-        gts = norm_ws(gold_s)
-        gg = gts if gts in ("yes", "no") else parse_yes_no(gold_s)
+        gg = gold_to_yes_no(gold_s)
         ok = (pg == gg) if (pg and gg) else em_soft(pred, gold_s)
         return (1.0 if ok else 0.0), "f1_binary"
     if query_id == 10:
@@ -470,7 +496,7 @@ print("Helpers ready.")
     md(
         """### Inference loop (checkpointed)
 
-**Checkpointed:** each row commits to disk (Drive if mounted). Safe if Colab disconnects — reconnect, run setup + model load + this cell with `RESUME_FROM_CHECKPOINT = True`. Quick test: `SMOKE_MAX_ROWS = 3`.
+**Checkpointed:** each row commits to disk (Drive if mounted in Step 2b). Safe if Colab disconnects — reconnect, run setup through Step 2b + model load + this cell with `RESUME_FROM_CHECKPOINT = True`. Quick test: `SMOKE_MAX_ROWS = 3`.
 """
     ),
     code(
@@ -513,7 +539,7 @@ for qid in tqdm(QUERY_IDS, desc="queries"):
         sub = df.loc[alt_idx]
     else:
         sub = df.loc[idx_sample]
-    task = extract_queries[qid - 10]
+    task = TASK_BY_QUERY_ID[qid]
 
     for _, row in tqdm(sub.iterrows(), total=len(sub), desc=f"q{qid} rows", leave=False):
         rkey = stable_row_key(row)
@@ -566,12 +592,12 @@ from sklearn.metrics import accuracy_score, f1_score
 
 ck = pd.read_csv(CHECKPOINT_PATH)
 _err = ck["error"].fillna("").astype(str).str.strip()
-ck_ok = ck[(_err == "") | (_err.lower() == "nan")].copy()
+ck_ok = ck[(_err == "") | (_err.str.lower() == "nan")].copy()
 ck_ok = ck_ok[ck_ok["pred"].notna()]
 
 rows_summary = []
 
-for qid in range(10, 20):
+for qid in QUERY_IDS:
     part = ck_ok[ck_ok["query_id"] == qid]
     for ratio in COMPRESSION_RATIOS:
         for mname in ("ea", "kvzip"):
@@ -596,7 +622,7 @@ for qid in range(10, 20):
                         y_true.append(gg)
                 elif qid in (14, 17, 18):
                     pg = parse_yes_no(str(r["pred"]))
-                    gg = parse_yes_no(str(r["gold"])) or norm_ws(str(r["gold"]))
+                    gg = gold_to_yes_no(str(r["gold"]))
                     if pg and gg:
                         y_pred.append(pg)
                         y_true.append(gg)
@@ -639,7 +665,7 @@ for mname, label in [("ea", "ExpectedAttention"), ("kvzip", "KVzip")]:
     ax.plot(sub["ratio"], sub["f1_macro"], marker="o", label=label)
 ax.set_xlabel("compression ratio")
 ax.set_ylabel("mean f1_macro (per-query macro, then average)")
-ax.set_title("Extract tasks (010–019): F1 vs compression")
+ax.set_title("Extract tasks (010–012): F1 vs compression")
 ax.legend()
 ax.grid(True, alpha=0.3)
 fig.tight_layout()
