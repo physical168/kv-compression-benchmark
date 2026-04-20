@@ -28,10 +28,10 @@ Or manually:
 ## Prerequisites
 
 ### Hugging Face Token
-You need a Hugging Face account and token to access the Llama 3.1 model:
+You need a Hugging Face account and token to access Meta Llama models used in these notebooks:
 
 1. Create an account at [Hugging Face](https://huggingface.co/)
-2. Request access to [Llama 3.1 8B Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct)
+2. Request access to [Llama 3.1 8B Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct) (and, for v3, [Llama 3.2 1B Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct))
 3. Generate a token at [Settings → Tokens](https://huggingface.co/settings/tokens)
 4. In Colab, run Cell 3 and paste your token when prompted
 
@@ -50,7 +50,12 @@ You need a Hugging Face account and token to access the Llama 3.1 model:
 7. **Compression Testing**: Smoke test Expected Attention vs KVzip (`KVzipPress`)
 8. **Benchmark protocol**: Instructor settings — ratios in `[0.2, 0.9]`, optional CSV of ~1000 reviews (sample 5–10%), optional query subsampling; full grid is commented out (slow, especially KVzip)
 9. **`analyze_benchmark.ipynb`**: Load `benchmark_runs.csv`, English narrative, and plots (also see `analyze_benchmark.py` for CLI)
-10. **`eval_extract.ipynb`**: Colab‑first notebook for **extract tasks only** (`query_010`–`019`). Default data path: **`/content/movie_result/`** (place the CSV files there, or change `MOVIE_RESULTS_DIR`). By default it mounts **Google Drive** and appends each finished row to **`MyDrive/kv-compression-benchmark/extract_eval/extract_predictions_checkpoint.csv`** (with fsync), so disconnects are recoverable with **`RESUME_FROM_CHECKPOINT = True`**. Default **`MAX_ROWS_PER_QUERY = 20`** per CSV; set **`0`** to use **`SAMPLE_FRAC`** only. **`SMOKE_MAX_ROWS=3`** caps further for a quick test. Open in Colab: [`eval_extract.ipynb`](https://colab.research.google.com/github/physical168/kv-compression-benchmark/blob/main/eval_extract.ipynb). Regenerate: `python scripts/generate_eval_extract_notebook.py`.
+10. **`eval_extract.ipynb` (legacy)**: Original Colab-first extract notebook (`query_010`–`019`, default `MAX_ROWS_PER_QUERY = 20`). Open in Colab: [`eval_extract.ipynb`](https://colab.research.google.com/github/physical168/kv-compression-benchmark/blob/main/eval_extract.ipynb).
+11. **`eval_extract_v2.ipynb` (recommended baseline)**: Reduced task set (`query_010`–`012`), larger sample (`MAX_ROWS_PER_QUERY = 120`), ratios `[0.2, 0.5, 0.8]`, and Drive checkpointing under `kv-compression-benchmark/extract_eval_v2_q10_12`.
+12. **`eval_extract_v3.ipynb` (speed-oriented variant)**: Uses [`Qwen/Qwen2.5-0.5B-Instruct`](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct), extract subset **`query_010`–`012`**, and a prefill KV-cache decode flow. On Colab (after Step 2b), CSVs default to **`MyDrive/kv-compression-benchmark/movie_results/`** if that folder exists, else **`/content/movie_result/`**. Default Drive checkpoint dir: `kv-compression-benchmark/extract_eval_v3_qwen05_q10_12`.
+13. **Notebook generators**:
+   - v2: `python scripts/generate_eval_extract_notebook.py`
+   - v3: `python scripts/generate_eval_extract_notebook_v3.py`
 
 ## Features
 
