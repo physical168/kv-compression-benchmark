@@ -85,6 +85,36 @@ STEP5_NEW = [
 ]
 
 # ───────────────────────────────────────────────────────────────
+# 新增 Step 5b：Smoke Test（在大循环前快速验证 FinchPress 是否可用）
+# ───────────────────────────────────────────────────────────────
+STEP5B_MD = [
+    "### Step 5b: Smoke test — verify FinchPress works on 1 sample before full run\n",
+    "\n",
+    "Run this cell **before Step 6**. If it prints `[SMOKE OK]`, Finch is working.\n",
+    "If it raises an error, **stop and fix the error first** — do not proceed to Step 6.\n"
+]
+
+STEP5B_CODE = [
+    "# Quick sanity check: run exactly 1 sample with FinchPress.\n",
+    "# If this succeeds without error, the full 4x4 loop will also work.\n",
+    "if not FINCH_AVAILABLE:\n",
+    "    raise RuntimeError(f'[SMOKE FAIL] FinchPress not available: {FINCH_ERR}')\n",
+    "\n",
+    "_smoke_prompt = (\n",
+    "    'Classify the movie review sentiment. '\n",
+    "    'Answer with one word only: positive or negative.\\n\\n'\n",
+    "    'Review: This movie was absolutely wonderful.\\n'\n",
+    "    'Answer:'\n",
+    ")\n",
+    "try:\n",
+    "    _smoke_out = run_generate_with_optional_finch(_smoke_prompt, finch_enabled=True, compression_ratio=0.5)\n",
+    "    print('[SMOKE OK] FinchPress generated output:', repr(_smoke_out[-80:]))\n",
+    "    print('Finch is working correctly — safe to run Step 6.')\n",
+    "except Exception as _e:\n",
+    "    raise RuntimeError(f'[SMOKE FAIL] FinchPress failed on 1 sample: {_e}') from _e\n",
+]
+
+# ───────────────────────────────────────────────────────────────
 # 新增 Step 6b：诊断单元格
 # ───────────────────────────────────────────────────────────────
 STEP6B_MD = [
@@ -228,6 +258,8 @@ cells = nb["cells"]
 new_cells = []
 step6b_injected = False
 
+step5b_injected = False
+
 for cell in cells:
     src = "".join(cell.get("source", []))
 
@@ -236,6 +268,11 @@ for cell in cells:
         new_cell["source"] = STEP5_NEW
         new_cells.append(new_cell)
         print("[PATCH] Replaced Step 5 (Finch adapter + delimiter fix)")
+        # Inject Step 5b smoke test immediately after Step 5
+        new_cells.append(md_cell(STEP5B_MD))
+        new_cells.append(code_cell(STEP5B_CODE, "smoke_5b"))
+        step5b_injected = True
+        print("[PATCH] Injected Step 5b (smoke test)")
 
     elif cell["cell_type"] == "code" and "accuracy_score" in src and "f1_score" in src and "summary" in src:
         if not step6b_injected:
