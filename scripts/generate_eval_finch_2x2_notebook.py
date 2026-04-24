@@ -135,7 +135,7 @@ import gc
 import pandas as pd
 
 RANDOM_SEED = 42
-MAX_ROWS = 200  # run first 200 rows for initial 2x2
+MAX_ROWS = 1000  # full run; checkpoint resume skips completed rows
 MAX_NEW_TOKENS = 8
 RESUME_FROM_CHECKPOINT = True
 FINCH_COMPRESSION_RATIO = 0.5
