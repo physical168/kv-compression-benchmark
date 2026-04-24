@@ -1,7 +1,10 @@
 """
 patch_notebook.py
 -----------------
-修改 eval_finch_2x2_qwen05b.ipynb，修复 Finch 被静默过滤的问题。
+修改 eval_finch_2x2_qwen05b.ipynb，修复 Finch 的两个问题：
+1. import 失败可见化
+2. FinchPress 需要调用 update_model_and_tokenizer（修复 delimiter token 报错）
+3. 添加诊断单元格
 运行方式: python patch_notebook.py
 """
 
@@ -30,7 +33,8 @@ def code_cell(lines, cell_id):
     }
 
 # ───────────────────────────────────────────────────────────────
-# 替换 Step 5：Finch adapter（让错误可见）
+# 替换 Step 5：Finch adapter
+# 关键修复：press.update_model_and_tokenizer(model, tokenizer)
 # ───────────────────────────────────────────────────────────────
 STEP5_NEW = [
     "# Finch interface via NVIDIA/kvpress FinchPress.\n",
@@ -60,6 +64,9 @@ STEP5_NEW = [
     "    inputs = tokenizer(prompt, return_tensors=\"pt\").to(model.device)\n",
     "    if finch_enabled:\n",
     "        press = FinchPress(compression_ratio=float(compression_ratio))\n",
+    "        # ── KEY FIX: update_model_and_tokenizer sets the delimiter token ID ──\n",
+    "        # Without this, FinchPress raises \"No delimiter token ID provided\".\n",
+    "        press.update_model_and_tokenizer(model, tokenizer)\n",
     "        with torch.no_grad(), press(model):\n",
     "            out = model.generate(\n",
     "                **inputs,\n",
@@ -78,7 +85,7 @@ STEP5_NEW = [
 ]
 
 # ───────────────────────────────────────────────────────────────
-# 新增 Step 6b：诊断单元格（确认每组配置状态）
+# 新增 Step 6b：诊断单元格
 # ───────────────────────────────────────────────────────────────
 STEP6B_MD = [
     "### Step 6b: Diagnose — check error counts per config (run after Step 6)"
@@ -86,8 +93,6 @@ STEP6B_MD = [
 
 STEP6B_CODE = [
     "# Run this AFTER Step 6 to see how many rows each config got, and what errors occurred.\n",
-    "# If Finch rows all show errors, check the 'error' column for the root cause.\n",
-    "\n",
     "if RUNS_PATH.is_file():\n",
     "    _runs_diag = pd.read_csv(RUNS_PATH)\n",
     "    _runs_diag[\"error\"] = _runs_diag[\"error\"].fillna(\"\").astype(str).str.strip()\n",
@@ -112,7 +117,7 @@ STEP6B_CODE = [
 ]
 
 # ───────────────────────────────────────────────────────────────
-# 替换 Step 7：汇总时显示 Finch 被过滤的情况
+# 替换 Step 7：汇总时显示被过滤的配置
 # ───────────────────────────────────────────────────────────────
 STEP7_NEW = [
     "import matplotlib.pyplot as plt\n",
@@ -123,7 +128,7 @@ STEP7_NEW = [
     "ok = runs[(runs[\"error\"] == \"\") | (runs[\"error\"].str.lower() == \"nan\")].copy()\n",
     "ok = ok[ok[\"pred_label\"].notna() & (ok[\"pred_label\"].astype(str).str.len() > 0)]\n",
     "\n",
-    "# ── NEW: report any configs that were entirely filtered out ──\n",
+    "# ── Report any configs that were entirely filtered out ──\n",
     "_all_configs = set(runs[\"config\"].unique())\n",
     "_ok_configs  = set(ok[\"config\"].unique())\n",
     "_dropped = _all_configs - _ok_configs\n",
@@ -173,7 +178,6 @@ STEP7_NEW = [
     "display(summary)\n",
     "\n",
     "if len(summary) > 0:\n",
-    "    # quality chart\n",
     "    fig, ax = plt.subplots(figsize=(8, 4.5))\n",
     "    x = range(len(summary))\n",
     "    ax.bar([i - 0.18 for i in x], summary[\"accuracy\"], width=0.36, label=\"accuracy\")\n",
@@ -190,7 +194,6 @@ STEP7_NEW = [
     "    plt.show()\n",
     "    print(\"Saved\", fp)\n",
     "\n",
-    "    # latency chart\n",
     "    fig, ax = plt.subplots(figsize=(8, 4.5))\n",
     "    ax.bar(summary[\"config\"], summary[\"latency_ms_mean\"])\n",
     "    ax.set_ylabel(\"mean latency (ms/sample)\")\n",
@@ -203,7 +206,6 @@ STEP7_NEW = [
     "    plt.show()\n",
     "    print(\"Saved\", fp)\n",
     "\n",
-    "    # trade-off scatter\n",
     "    fig, ax = plt.subplots(figsize=(6, 5))\n",
     "    ax.scatter(summary[\"latency_ms_mean\"], summary[\"f1_macro\"])\n",
     "    for _, r in summary.iterrows():\n",
@@ -220,33 +222,27 @@ STEP7_NEW = [
 ]
 
 # ───────────────────────────────────────────────────────────────
-# 执行 patch
+# 执行 patch（基于原始 notebook，不用 fixed 版本）
 # ───────────────────────────────────────────────────────────────
 cells = nb["cells"]
 new_cells = []
-i = 0
 step6b_injected = False
 
-while i < len(cells):
-    cell = cells[i]
+for cell in cells:
     src = "".join(cell.get("source", []))
 
-    # 替换 Step 5（Finch adapter）
     if cell["cell_type"] == "code" and "FINCH_AVAILABLE = False" in src and "FinchPress = None" in src:
         new_cell = copy.deepcopy(cell)
         new_cell["source"] = STEP5_NEW
         new_cells.append(new_cell)
-        print("[PATCH] Replaced Step 5 (Finch adapter)")
+        print("[PATCH] Replaced Step 5 (Finch adapter + delimiter fix)")
 
-    # 替换 Step 7（aggregation）
     elif cell["cell_type"] == "code" and "accuracy_score" in src and "f1_score" in src and "summary" in src:
-        # 注入 Step 6b 诊断单元格（在 Step 7 之前）
         if not step6b_injected:
             new_cells.append(md_cell(STEP6B_MD))
             new_cells.append(code_cell(STEP6B_CODE, "diag_6b"))
             step6b_injected = True
             print("[PATCH] Injected Step 6b (diagnostic cell)")
-
         new_cell = copy.deepcopy(cell)
         new_cell["source"] = STEP7_NEW
         new_cells.append(new_cell)
@@ -255,12 +251,10 @@ while i < len(cells):
     else:
         new_cells.append(cell)
 
-    i += 1
-
 nb["cells"] = new_cells
 
 with open(OUT_PATH, "w", encoding="utf-8") as f:
     json.dump(nb, f, ensure_ascii=False, indent=1)
 
 print(f"\n✅ Patched notebook saved to: {OUT_PATH}")
-print("   Upload this file to Colab and run again.")
+print("   Upload this file to Colab, delete the old runs CSV, and run again.")
