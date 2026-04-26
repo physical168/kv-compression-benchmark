@@ -33,6 +33,101 @@ def code_cell(lines, cell_id):
     }
 
 # ───────────────────────────────────────────────────────────────
+# 替换 Step 4：Configuration（改为 100 样本以提速）
+# ───────────────────────────────────────────────────────────────
+STEP4_NEW = [
+    "from __future__ import annotations\n",
+    "\n",
+    "import re\n",
+    "import time\n",
+    "import csv\n",
+    "import gc\n",
+    "import pandas as pd\n",
+    "\n",
+    "RANDOM_SEED = 42\n",
+    "MAX_ROWS = 100  # Reduced to 100 for faster evaluation\n",
+    "MAX_NEW_TOKENS = 8\n",
+    "RESUME_FROM_CHECKPOINT = True\n",
+    "COMPRESSION_RATIOS = [0.2, 0.4, 0.6, 0.8]\n",
+    "\n",
+    "# 2x2 base grid: Finch on/off × CPT with/without\n",
+    "CONFIGS = [\n",
+    "    {\"finch_enabled\": False, \"use_cpt\": False},\n",
+    "    {\"finch_enabled\": False, \"use_cpt\": True},\n",
+    "    {\"finch_enabled\": True, \"use_cpt\": False},\n",
+    "    {\"finch_enabled\": True, \"use_cpt\": True},\n",
+    "]\n",
+    "\n",
+    "# Using 'short' filenames to avoid mixing with previous 1000-row incomplete data\n",
+    "RUNS_PATH = RUN_DIR / \"finch_short_runs.csv\"\n",
+    "SUMMARY_PATH = RUN_DIR / \"finch_short_summary.csv\"\n",
+    "\n",
+    "\n",
+    "def normalize_label(s: str) -> str | None:\n",
+    "    t = str(s).strip().lower()\n",
+    "    if t in (\"positive\", \"pos\", \"1\", \"true\"):\n",
+    "        return \"positive\"\n",
+    "    if t in (\"negative\", \"neg\", \"0\", \"false\"):\n",
+    "        return \"negative\"\n",
+    "    return None\n",
+    "\n",
+    "\n",
+    "def parse_sentiment(pred_text: str) -> str | None:\n",
+    "    t = str(pred_text).strip().lower()\n",
+    "    if re.search(r\"\\bpositive\\b\", t):\n",
+    "        return \"positive\"\n",
+    "    if re.search(r\"\\bnegative\\b\", t):\n",
+    "        return \"negative\"\n",
+    "    if t.startswith(\"pos\"):\n",
+    "        return \"positive\"\n",
+    "    if t.startswith(\"neg\"):\n",
+    "        return \"negative\"\n",
+    "    return None\n",
+    "\n",
+    "\n",
+    "def cfg_name(cfg: dict) -> str:\n",
+    "    return f\"finch_{int(cfg['finch_enabled'])}_cpt_{int(cfg['use_cpt'])}\"\n",
+    "\n",
+    "\n",
+    "CK_FIELDS = [\n",
+    "    \"config\",\n",
+    "    \"finch_enabled\",\n",
+    "    \"use_cpt\",\n",
+    "    \"compression_ratio\",\n",
+    "    \"row_id\",\n",
+    "    \"reviewid\",\n",
+    "    \"gold\",\n",
+    "    \"pred_raw\",\n",
+    "    \"pred_label\",\n",
+    "    \"latency_ms\",\n",
+    "    \"error\",\n",
+    "]\n",
+    "\n",
+    "\n",
+    "def load_done(path):\n",
+    "    if not path.is_file() or not RESUME_FROM_CHECKPOINT:\n",
+    "        return set()\n",
+    "    ck = pd.read_csv(path)\n",
+    "    done = set()\n",
+    "    for _, r in ck.iterrows():\n",
+    "        err = str(r.get(\"error\", \"\")).strip().lower()\n",
+    "        if err in (\"\", \"nan\"):\n",
+    "            done.add((str(r[\"config\"]), str(r[\"row_id\"])))\n",
+    "    return done\n",
+    "\n",
+    "\n",
+    "def append_row(path, row):\n",
+    "    newfile = not path.is_file()\n",
+    "    with path.open(\"a\", newline=\"\", encoding=\"utf-8\") as f:\n",
+    "        w = csv.DictWriter(f, fieldnames=CK_FIELDS, extrasaction=\"ignore\")\n",
+    "        if newfile:\n",
+    "            w.writeheader()\n",
+    "        w.writerow({k: row.get(k, \"\") for k in CK_FIELDS})\n",
+    "        f.flush()\n",
+    "        os.fsync(f.fileno())\n"
+]
+
+# ───────────────────────────────────────────────────────────────
 # 替换 Step 5：Finch adapter
 # 关键修复：press.update_model_and_tokenizer(model, tokenizer)
 # ───────────────────────────────────────────────────────────────
@@ -270,7 +365,13 @@ step5b_injected = False
 for cell in cells:
     src = "".join(cell.get("source", []))
 
-    if cell["cell_type"] == "code" and "FINCH_AVAILABLE = False" in src and "FinchPress = None" in src:
+    if cell["cell_type"] == "code" and "RANDOM_SEED = 42" in src and "MAX_ROWS =" in src:
+        new_cell = copy.deepcopy(cell)
+        new_cell["source"] = STEP4_NEW
+        new_cells.append(new_cell)
+        print("[PATCH] Replaced Step 4 (Configuration, set MAX_ROWS=100)")
+
+    elif cell["cell_type"] == "code" and "FINCH_AVAILABLE = False" in src and "FinchPress = None" in src:
         new_cell = copy.deepcopy(cell)
         new_cell["source"] = STEP5_NEW
         new_cells.append(new_cell)
