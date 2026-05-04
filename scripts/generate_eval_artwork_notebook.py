@@ -183,7 +183,7 @@ Straight `LlavaNext*` load only (no `AutoModel` fallback). 默认已开 `LOAD_IN
 
 若本格跑完后**会话重启**：下次必须从 **Step 2** 开始（再 Step 3、Step 4），否则会出现 `RUN_DIR` / `model` 未定义。
 
-> **已经打印 `Model ready` 却仍立刻崩溃？** 多半是 **显存/内存峰值（OOM）** 或 Colab 断连，不是步骤顺序错了。下次照样要从 Step 2 重跑。可先把下面 **`LOAD_IN_8BIT = True`**（省显存），或换 **高 RAM / 更大 GPU** 的运行时。
+> **已经打印 `Model ready` 却仍立刻崩溃？** 多半是 **显存/内存峰值（OOM）** 或 Colab 断连。下次从 Step 2 重跑。若 8bit 仍 OOM，可把 **`LOAD_IN_8BIT = False`**（更吃显存）或换更大 GPU 运行时。
 """
         ),
         code(
@@ -196,7 +196,7 @@ print("transformers:", transformers.__version__)
 print("imported from:", transformers.__file__)
 
 MODEL_ID = "llava-hf/llama3-llava-next-8b-hf"
-# Colab free T4: True 可明显降低显存峰值（推荐）；本地调试可改 False
+# Colab: True 省显存；若 device_map 把部分层放 CPU，必须开 llm_int8_enable_fp32_cpu_offload
 LOAD_IN_8BIT = True
 
 dtype = (
@@ -205,7 +205,14 @@ dtype = (
     else torch.float16
 )
 
-quantization_config = BitsAndBytesConfig(load_in_8bit=True) if LOAD_IN_8BIT else None
+quantization_config = (
+    BitsAndBytesConfig(
+        load_in_8bit=True,
+        llm_int8_enable_fp32_cpu_offload=True,
+    )
+    if LOAD_IN_8BIT
+    else None
+)
 
 print(f"Loading {MODEL_ID} ...")
 processor = LlavaNextProcessor.from_pretrained(MODEL_ID)
