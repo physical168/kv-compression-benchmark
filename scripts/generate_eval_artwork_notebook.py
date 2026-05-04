@@ -58,7 +58,7 @@ Each finished `(config, ratio, query_type, row_id)` is appended with disk-flush 
 
         # ── Step 1 ──────────────────────────────────────────────────────────
         md("### Step 1 — Install dependencies"),
-        code("!pip install -q -U transformers accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress pillow"),
+        code("!pip install -q -U git+https://github.com/huggingface/transformers.git accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress pillow"),
 
         # ── Step 2 ──────────────────────────────────────────────────────────
         md("### Step 2 — Mount Google Drive & set paths"),
@@ -268,28 +268,28 @@ df["gold_genre"]    = df["genre"].str.strip().str.lower()
 
 # Build per-query-type prompts
 def build_prompt(row: pd.Series, query_type: str, use_cpt: bool) -> str:
-    cpt_prefix = (row["cpt"] + "\\n") if use_cpt else ""
+    cpt_prefix = (row["cpt"] + "\n") if use_cpt else ""
     mv = row["movement"].strip()
     if query_type == "filter":
         return (
             f"{cpt_prefix}"
-            f"Is this painting from the {mv} movement? "
-            "Answer with one word only: yes or no."
+            f"Question: Is this painting from the {mv} movement? "
+            "Answer with one word: yes or no."
         )
     elif query_type == "extract":
         return (
             f"{cpt_prefix}"
-            "What is the genre of this painting? "
-            "Choose from: portrait, religious art, history painting, "
+            "Question: What is the genre of this painting? "
+            "Choices: portrait, religious art, history painting, "
             "mythological painting, nude, genre art. "
-            "Answer with the genre only."
+            "Answer with the genre name only."
         )
     else:  # both
         return (
             f"{cpt_prefix}"
-            f"Is this painting from the {mv} movement? "
-            "If yes, also state its genre (one of: portrait, religious art, "
-            "history painting, mythological painting, nude, genre art). "
+            f"Question: Is this painting from the {mv} movement? "
+            "If yes, what is its genre (portrait, religious art, "
+            "history painting, mythological painting, nude, or genre art)? "
             "Answer concisely."
         )
 
