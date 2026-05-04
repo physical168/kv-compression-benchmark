@@ -49,13 +49,15 @@ Vision-Language Model benchmark on the paintings dataset.
         md(
             """### Step 1 — Install dependencies
 
-PyPI only (`transformers>=5` matches **kvpress**). No Git `transformers`, no Pillow pin, no kernel restart — easier to debug import/version issues.
+PyPI only (`transformers>=5` matches **kvpress**). After other wheels, **reinstall Pillow once** so `PIL._typing` / `ImageFont` stay in sync (fixes `StrOrBytesPath` ImportError on Colab when Pillow was half-upgraded). No kernel restart.
 """
         ),
         code(
             """!pip install -q -U "transformers>=5.0" accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress pillow
+!pip install -q --force-reinstall "Pillow>=10.4.0"
 import transformers as _tf
-print("transformers", _tf.__version__)
+import PIL
+print("transformers", _tf.__version__, "| Pillow", PIL.__version__)
 print("from", _tf.__file__)"""
         ),
 
