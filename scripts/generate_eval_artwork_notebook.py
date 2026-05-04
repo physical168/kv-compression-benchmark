@@ -53,10 +53,12 @@ PyPI only (`transformers>=5` matches **kvpress**). **Pillow** is pinned and rein
 """
         ),
         code(
-            """!pip install -q -U "transformers>=5.0" accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress
+            """# Colab has a system _imaging.so compiled for Pillow 10.2.0.
+# pip install only replaces Python files -> version mismatch.
+# Fix: compile Pillow from source so _imaging.so is rebuilt to match.
+!pip install -q -U "transformers>=5.0" accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress
 !pip uninstall -y Pillow pillow
-!pip uninstall -y Pillow pillow
-!pip install -q --no-cache-dir "Pillow==11.2.1"
+!pip install -q --no-binary Pillow "Pillow==10.4.0"
 import sys
 for _k in list(sys.modules):
     if _k == "PIL" or _k.startswith("PIL."):
@@ -124,7 +126,7 @@ Starts with a **Pillow self-check**: if `PIL.Image` fails (missing `StrOrBytesPa
 import subprocess
 import sys
 
-_PILLOW_PIN = "Pillow==11.2.1"
+_PILLOW_PIN = "Pillow==10.4.0"
 
 
 def _purge_pil_modules():
@@ -134,37 +136,25 @@ def _purge_pil_modules():
 
 
 def _ensure_pillow_binary_matches():
-    # Colab: avoid Pillow 12.x Python + stale _imaging from 10.x after broken force-reinstall.
+    # Colab keeps a system _imaging.so (compiled for 10.2) that pip cannot overwrite via
+    # pre-built wheels. The only reliable fix is to compile Pillow from source
+    # (--no-binary Pillow) so a fresh _imaging.so matching the Python files is built.
     _purge_pil_modules()
     try:
         from PIL import Image  # noqa: F401
-
         return
-    except ImportError:
+    except (ImportError, RuntimeError):
         pass
     subprocess.run(
         [sys.executable, "-m", "pip", "uninstall", "-y", "Pillow", "pillow"],
-        check=False,
-        capture_output=True,
-    )
-    subprocess.run(
-        [sys.executable, "-m", "pip", "uninstall", "-y", "Pillow", "pillow"],
-        check=False,
-        capture_output=True,
+        check=False, capture_output=True,
     )
     subprocess.check_call(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "-q",
-            "--no-cache-dir",
-            _PILLOW_PIN,
-        ],
+        [sys.executable, "-m", "pip", "install", "-q",
+         "--no-binary", "Pillow", _PILLOW_PIN],
     )
     _purge_pil_modules()
-    from PIL import Image  # noqa: F401
+    from PIL import Image  # noqa: F401  -- raises if still broken
 
 
 _ensure_pillow_binary_matches()
