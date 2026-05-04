@@ -110,14 +110,10 @@ print("IMAGES_DIR  :", IMAGES_DIR.resolve())
             """\
 import torch
 from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
-from transformers import AutoProcessor, AutoModelForCausalLM
+from transformers import AutoProcessor, AutoModelForVision2Seq, BitsAndBytesConfig
 
 # Primary: 8B model (fits on A100 or T4 with 8-bit quant)
-# Fallback: comment out MODEL_ID and uncomment the smaller one if you hit OOM
 MODEL_ID = "llava-hf/llama3-llava-next-8b-hf"
-# MODEL_ID = "llava-hf/llava-interleave-qwen-0.5b-hf"   # ~0.5 B, fastest
-# MODEL_ID = "Qwen/Qwen2-VL-2B-Instruct"                 # ~2 B
-
 LOAD_IN_8BIT = True   # set False if running on A100 / plenty of VRAM
 
 dtype = (
@@ -126,22 +122,25 @@ dtype = (
     else torch.float16
 )
 
-print(f"Loading {MODEL_ID}  (load_in_8bit={LOAD_IN_8BIT}) ...")
+quantization_config = BitsAndBytesConfig(load_in_8bit=True) if LOAD_IN_8BIT else None
+
+print(f"Loading {MODEL_ID} (quantization_config={quantization_config}) ...")
 try:
     processor = LlavaNextProcessor.from_pretrained(MODEL_ID)
     model = LlavaNextForConditionalGeneration.from_pretrained(
         MODEL_ID,
         torch_dtype=dtype,
         device_map="auto",
-        load_in_8bit=LOAD_IN_8BIT,
+        quantization_config=quantization_config,
     )
 except Exception as e:
-    print(f"LlavaNext load failed ({e}); trying AutoModel ...")
+    print(f"LlavaNext load failed ({e}); trying AutoModelForVision2Seq ...")
     processor = AutoProcessor.from_pretrained(MODEL_ID)
-    model = AutoModelForCausalLM.from_pretrained(
+    model = AutoModelForVision2Seq.from_pretrained(
         MODEL_ID,
         torch_dtype=dtype,
         device_map="auto",
+        quantization_config=quantization_config,
     )
 
 print("Model ready:", MODEL_ID)
