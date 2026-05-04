@@ -58,7 +58,7 @@ Each finished `(config, ratio, query_type, row_id)` is appended with disk-flush 
 
         # ── Step 1 ──────────────────────────────────────────────────────────
         md("### Step 1 — Install dependencies"),
-        code("!pip install -q transformers accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress pillow"),
+        code("!pip install -q -U transformers accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress pillow"),
 
         # ── Step 2 ──────────────────────────────────────────────────────────
         md("### Step 2 — Mount Google Drive & set paths"),
@@ -109,8 +109,13 @@ print("IMAGES_DIR  :", IMAGES_DIR.resolve())
         code(
             """\
 import torch
-from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
-from transformers import AutoProcessor, AutoModelForVision2Seq, BitsAndBytesConfig
+from transformers import (
+    LlavaNextProcessor, 
+    LlavaNextForConditionalGeneration,
+    AutoProcessor, 
+    AutoModel, 
+    BitsAndBytesConfig
+)
 
 # Primary: 8B model (fits on A100 or T4 with 8-bit quant)
 MODEL_ID = "llava-hf/llama3-llava-next-8b-hf"
@@ -134,13 +139,14 @@ try:
         quantization_config=quantization_config,
     )
 except Exception as e:
-    print(f"LlavaNext load failed ({e}); trying AutoModelForVision2Seq ...")
+    print(f"LlavaNext load failed ({e}); trying generic AutoModel ...")
     processor = AutoProcessor.from_pretrained(MODEL_ID)
-    model = AutoModelForVision2Seq.from_pretrained(
+    model = AutoModel.from_pretrained(
         MODEL_ID,
         torch_dtype=dtype,
         device_map="auto",
         quantization_config=quantization_config,
+        trust_remote_code=True
     )
 
 print("Model ready:", MODEL_ID)
