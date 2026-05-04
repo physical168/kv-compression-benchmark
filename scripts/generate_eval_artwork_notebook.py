@@ -46,13 +46,17 @@ Vision-Language Model benchmark on the paintings dataset.
         ),
 
         # ── Step 1 ──────────────────────────────────────────────────────────
-        md("### Step 1 — Install dependencies"),
+        md(
+            """### Step 1 — Install dependencies
+
+PyPI only (`transformers>=5` matches **kvpress**). No Git `transformers`, no Pillow pin, no kernel restart — easier to debug import/version issues.
+"""
+        ),
         code(
-            """!pip install -q -U git+https://github.com/huggingface/transformers.git accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress pillow
-!pip install -q --force-reinstall Pillow==10.2.0
-import os
-print(\"\\nInstallation complete. Restarting runtime to apply PIL changes...\")
-os.kill(os.getpid(), 9)"""
+            """!pip install -q -U "transformers>=5.0" accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress pillow
+import transformers as _tf
+print("transformers", _tf.__version__)
+print("from", _tf.__file__)"""
         ),
 
         # ── Step 2 ──────────────────────────────────────────────────────────
@@ -99,20 +103,24 @@ print("IMAGES_DIR  :", IMAGES_DIR.resolve())
         ),
 
         # ── Step 3 ──────────────────────────────────────────────────────────
-        md("### Step 3 — Load model"),
+        md(
+            """### Step 3 — Load model
+
+Straight `LlavaNext*` load only (no `AutoModel` fallback — it hits the same CLIP stack). Set `LOAD_IN_8BIT = True` after the stack works.
+"""
+        ),
         code(
             """\
 import torch
-from transformers import (
-    LlavaNextProcessor, 
-    LlavaNextForConditionalGeneration,
-    AutoProcessor, 
-    AutoModel, 
-    BitsAndBytesConfig
-)
+import transformers
+from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration, BitsAndBytesConfig
+
+print("transformers:", transformers.__version__)
+print("imported from:", transformers.__file__)
 
 MODEL_ID = "llava-hf/llama3-llava-next-8b-hf"
-LOAD_IN_8BIT = True
+# False while debugging env; True uses bitsandbytes 8-bit weights
+LOAD_IN_8BIT = False
 
 dtype = (
     torch.bfloat16
@@ -123,25 +131,13 @@ dtype = (
 quantization_config = BitsAndBytesConfig(load_in_8bit=True) if LOAD_IN_8BIT else None
 
 print(f"Loading {MODEL_ID} ...")
-try:
-    processor = LlavaNextProcessor.from_pretrained(MODEL_ID)
-    model = LlavaNextForConditionalGeneration.from_pretrained(
-        MODEL_ID,
-        torch_dtype=dtype,
-        device_map="auto",
-        quantization_config=quantization_config,
-    )
-except Exception as e:
-    print(f"LlavaNext load failed ({e}); trying generic AutoModel ...")
-    processor = AutoProcessor.from_pretrained(MODEL_ID)
-    model = AutoModel.from_pretrained(
-        MODEL_ID,
-        torch_dtype=dtype,
-        device_map="auto",
-        quantization_config=quantization_config,
-        trust_remote_code=True
-    )
-
+processor = LlavaNextProcessor.from_pretrained(MODEL_ID)
+model = LlavaNextForConditionalGeneration.from_pretrained(
+    MODEL_ID,
+    torch_dtype=dtype,
+    device_map="auto",
+    quantization_config=quantization_config,
+)
 print("Model ready:", MODEL_ID)
 """
         ),
@@ -251,7 +247,7 @@ print(f"Loaded {len(df)} rows. Accuracy will be measured against 'movement' and 
             """\
 from kvpress import ExpectedAttentionPress, KVzipPress, FinchPress
 
-_PRESS_MAP = {"ea": ExpectedAttentionAttentionPress if 'ExpectedAttentionAttentionPress' in globals() else ExpectedAttentionPress, "kvzip": KVzipPress, "finch": FinchPress}
+_PRESS_MAP = {"ea": ExpectedAttentionPress, "kvzip": KVzipPress, "finch": FinchPress}
 
 def run_generate_vision(image_path: str, prompt: str, method: str, compression_ratio: float) -> str:
     image = Image.open(image_path).convert("RGB")
