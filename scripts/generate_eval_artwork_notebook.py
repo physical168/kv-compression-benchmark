@@ -116,49 +116,14 @@ print("IMAGES_DIR  :", IMAGES_DIR.resolve())
         md(
             """### Step 3 — Load model
 
-Straight `LlavaNext*` load only (no `AutoModel` fallback — it hits the same CLIP stack). Set `LOAD_IN_8BIT = True` after the stack works.
+Straight `LlavaNext*` load only (no `AutoModel` fallback). Set `LOAD_IN_8BIT = True` after everything works.
 
-Starts with a **Pillow self-check**: if `PIL.Image` fails (missing `StrOrBytesPath`, or `_imaging` core vs package mismatch), we `pip uninstall` twice and install **`Pillow==11.2.1`** with `--no-cache-dir`, then clear `sys.modules`.
+> **Prerequisite**: Step 1 must have printed "Pillow OK" or have restarted the kernel.  
+> If you see a Pillow `_imaging` mismatch error here, go back to Step 1 and re-run it (it will restart the kernel), then continue from Step 2.
 """
         ),
         code(
             """\
-import subprocess
-import sys
-
-_PILLOW_PIN = "Pillow==10.4.0"
-
-
-def _purge_pil_modules():
-    for k in list(sys.modules):
-        if k == "PIL" or k.startswith("PIL."):
-            del sys.modules[k]
-
-
-def _ensure_pillow_binary_matches():
-    # Colab keeps a system _imaging.so (compiled for 10.2) that pip cannot overwrite via
-    # pre-built wheels. The only reliable fix is to compile Pillow from source
-    # (--no-binary Pillow) so a fresh _imaging.so matching the Python files is built.
-    _purge_pil_modules()
-    try:
-        from PIL import Image  # noqa: F401
-        return
-    except (ImportError, RuntimeError):
-        pass
-    subprocess.run(
-        [sys.executable, "-m", "pip", "uninstall", "-y", "Pillow", "pillow"],
-        check=False, capture_output=True,
-    )
-    subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", "-q",
-         "--no-binary", "Pillow", _PILLOW_PIN],
-    )
-    _purge_pil_modules()
-    from PIL import Image  # noqa: F401  -- raises if still broken
-
-
-_ensure_pillow_binary_matches()
-
 import torch
 import transformers
 from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration, BitsAndBytesConfig
