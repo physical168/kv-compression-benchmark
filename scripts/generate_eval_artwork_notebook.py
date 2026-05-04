@@ -295,15 +295,33 @@ def append_row(path: Path, row: dict) -> None:
         ),
 
         # ── Step 5 ──────────────────────────────────────────────────────────
-        md("### Step 5 — Load dataset & build dynamic queries"),
+        md(
+            """### Step 5 — Load dataset & build dynamic queries
+
+若图片在 Drive 上**文件名仍带 `%20`**（上传 zip 或未解码重命名），而 `image_url` 里是编码形式，仅用 `unquote` 后的路径会找不到文件。下面 `image_path` 会**先试解码名、再试 URL 尾段的原始字面名**。
+"""
+        ),
         code(
             """\
 df = pd.read_csv(DATASET_PATH)
 df = df[df["image_url"].notna()].copy().reset_index(drop=True)
 if MAX_ROWS > 0: df = df.head(MAX_ROWS)
 
+
+def resolve_artwork_image_path(url: str) -> str:
+    \"\"\"Prefer human-readable filename; fall back to %-encoded literal on disk (common on Drive).\"\"\"
+    tail = url.split("/")[-1].split("?")[0]
+    p_decoded = IMAGES_DIR / unquote(tail)
+    p_raw = IMAGES_DIR / tail
+    if p_decoded.is_file():
+        return str(p_decoded)
+    if p_raw.is_file():
+        return str(p_raw)
+    return str(p_decoded)
+
+
 df["image_file"] = df["image_url"].apply(url_to_local_filename)
-df["image_path"]  = df["image_file"].apply(lambda f: str(IMAGES_DIR / f))
+df["image_path"] = df["image_url"].apply(resolve_artwork_image_path)
 df["cpt"] = df.apply(lambda r: f"Context: This is a painting titled '{r['title']}'.", axis=1)
 
 # Dynamic Query Templates
