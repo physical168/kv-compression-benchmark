@@ -203,44 +203,39 @@ def append_row(path: Path, row: dict) -> None:
         ),
 
         # ── Step 5 ──────────────────────────────────────────────────────────
-        md("### Step 5 — Load dataset & queries"),
+        md("### Step 5 — Load dataset & build dynamic queries"),
         code(
             """\
-FILTER_QUERIES = [
-    "Does this painting depict Madonna and Child?",
-    "Does this painting depict more than two people?",
-    "Does this painting depict more than three people?",
-    "Does this painting depict saints identifiable by their halos?",
-    "Does this painting depict a scene in which death is a dominant theme?",
-    "Does this painting depict a religious scene?",
-    "Does this painting show a still life?",
-    "Does this painting depict a scene of war?",
-    "Does this painting depict an angel with wings?",
-    "Does this painting depict a crucifixion scene?"
-]
-
-EXTRACT_QUERIES = [
-    "Extract the number of people depicted in this painting.",
-    "Extract the primary background color of this painting. Choose from Red, Blue, Yellow, Green, Orange, Purple, Black, White.",
-    "Extract the number of saints with halos from this painting.",
-    "Extract the number of animals from this painting.",
-    "Extract the gender of the main character from this painting. (male / female / undefined)",
-    "Extract the type of setting of this painting. (interior / exterior / undefined)",
-    "Extract the dominant material depicted in this painting. (stone / wood / metal / fabric / undefined)",
-    "Extract the approximate lighting type in this painting. (natural / candle / undefined)",
-    "Extract the level of movement in this painting. (static / moderate / dynamic)",
-    "Extract the landscape type depicted in this painting. (mountain / forest / sea / plain / undefined)"
-]
-
 df = pd.read_csv(DATASET_PATH)
 df = df[df["image_url"].notna()].copy().reset_index(drop=True)
 if MAX_ROWS > 0: df = df.head(MAX_ROWS)
 
 df["image_file"] = df["image_url"].apply(url_to_local_filename)
 df["image_path"]  = df["image_file"].apply(lambda f: str(IMAGES_DIR / f))
-df["cpt"] = df.apply(lambda r: f"Context: This is a painting titled '{r['title']}', created in the {r['movement']} movement.", axis=1)
+df["cpt"] = df.apply(lambda r: f"Context: This is a painting titled '{r['title']}'.", axis=1)
 
-print(f"Loaded {len(df)} rows.")
+# Dynamic Query Templates
+def get_prompts_for_row(row: pd.Series, qtype: str, use_cpt: bool) -> list[tuple[str, str]]:
+    \"\"\"Returns a list of (prompt, gold_answer) tuples for a row.\"\"\"
+    cpt_prefix = (row["cpt"] + "\\n") if use_cpt else ""
+    mv = row["movement"].strip()
+    gn = row["genre"].strip().lower()
+    
+    if qtype == "filter":
+        # We ask if it IS the correct movement. Gold is always 'yes'.
+        return [
+            (f"{cpt_prefix}Is this a {mv} painting? Answer yes or no.", "yes"),
+            (f"{cpt_prefix}Does this artwork belong to the {mv} movement? Answer yes or no.", "yes"),
+        ]
+    else: # extract
+        # We ask for the genre. Gold is the genre value.
+        choices = "Choices: portrait, religious art, history painting, mythological painting, nude, genre art."
+        return [
+            (f"{cpt_prefix}What is the genre of this painting? {choices} Answer with the genre name only.", gn),
+            (f"{cpt_prefix}Identify the genre of this artwork. {choices}", gn),
+        ]
+
+print(f"Loaded {len(df)} rows. Accuracy will be measured against 'movement' and 'genre' columns.")
 """
         ),
 
@@ -288,16 +283,17 @@ for cfg in CONFIGS:
     name, method, use_cpt = cfg_name(cfg), cfg["method"], bool(cfg["use_cpt"])
     for ratio in COMPRESSION_RATIOS:
         for qtype in QUERY_TYPES:
-            queries = FILTER_QUERIES if qtype == "filter" else EXTRACT_QUERIES
-            for q_idx, base_query in enumerate(queries):
-                for i, row in tqdm(df.iterrows(), total=len(df), desc=f"{name}_r{ratio}_{qtype}_q{q_idx}", leave=False):
+            for i, row in tqdm(df.iterrows(), total=len(df), desc=f"{name}_r{ratio}_{qtype}", leave=False):
+                # Get the list of (prompt, gold) for this row and qtype
+                queries = get_prompts_for_row(row, qtype, use_cpt)
+                
+                for q_idx, (prompt, gold) in enumerate(queries):
                     row_key = f"{i}_q{q_idx}"
                     key = (name, str(ratio), qtype, row_key)
                     if key in done: continue
                     
                     if not os.path.isfile(row["image_path"]): continue
                     
-                    prompt = f"{row['cpt'] + '\\n' if use_cpt else ''}Question: {base_query}\\nAnswer:"
                     err, pred_raw = "", ""
                     t0 = time.perf_counter()
                     try:
@@ -310,7 +306,7 @@ for cfg in CONFIGS:
                         "config": name, "method": method, "use_cpt": use_cpt,
                         "compression_ratio": ratio, "query_type": qtype,
                         "row_id": row_key, "image_file": row["image_file"],
-                        "gold": "N/A", "pred_raw": pred_raw, "pred_label": pred_raw.strip().lower()[:80],
+                        "gold": gold, "pred_raw": pred_raw, "pred_label": pred_raw.strip().lower()[:80],
                         "latency_ms": latency_ms, "error": err
                     })
                     if not err: done.add(key)
@@ -324,9 +320,34 @@ for cfg in CONFIGS:
         code(
             """\
 import matplotlib.pyplot as plt
+import numpy as np
 runs = pd.read_csv(RUNS_PATH)
-summary = runs.groupby(["query_type", "config", "compression_ratio"])["latency_ms"].mean().reset_index()
+runs["error"] = runs["error"].fillna("").astype(str)
+ok = runs[runs["error"] == ""].copy()
+
+def is_correct(pred, gold):
+    p, g = str(pred).strip().lower(), str(gold).strip().lower()
+    return g in p or p in g
+
+ok["correct"] = ok.apply(lambda r: is_correct(r["pred_label"], r["gold"]), axis=1)
+
+summary = ok.groupby(["query_type", "config", "compression_ratio"]).agg(
+    accuracy=("correct", "mean"),
+    latency_ms=("latency_ms", "mean")
+).reset_index()
 display(summary)
+
+# Plotting Accuracy
+for qt in summary["query_type"].unique():
+    subset = summary[summary["query_type"] == qt]
+    plt.figure(figsize=(10, 5))
+    for cfg in subset["config"].unique():
+        d = subset[subset["config"] == cfg].sort_values("compression_ratio")
+        plt.plot(d["compression_ratio"], d["accuracy"], marker='o', label=cfg)
+    plt.title(f"Accuracy vs Ratio ({qt})")
+    plt.xlabel("Compression Ratio")
+    plt.ylabel("Accuracy")
+    plt.legend(); plt.grid(True); plt.show()
 """
         )
     ]
