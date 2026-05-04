@@ -49,12 +49,16 @@ Vision-Language Model benchmark on the paintings dataset.
         md(
             """### Step 1 — Install dependencies
 
-PyPI only (`transformers>=5` matches **kvpress**). After other wheels, **reinstall Pillow once** so `PIL._typing` / `ImageFont` stay in sync (fixes `StrOrBytesPath` ImportError on Colab when Pillow was half-upgraded). No kernel restart.
+PyPI only (`transformers>=5` matches **kvpress**). After other wheels, **reinstall Pillow** so `ImageFont` / `_typing` match. Before importing `transformers`, cached `PIL.*` modules are dropped (Colab often keeps a stale mix in `sys.modules`). If errors persist: **Runtime → Restart session**, then Step 1 → Step 3.
 """
         ),
         code(
             """!pip install -q -U "transformers>=5.0" accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress pillow
-!pip install -q --force-reinstall "Pillow>=10.4.0"
+!pip install -q --force-reinstall "Pillow>=11.0.0"
+import sys
+for _k in list(sys.modules):
+    if _k == "PIL" or _k.startswith("PIL."):
+        del sys.modules[_k]
 import transformers as _tf
 import PIL
 print("transformers", _tf.__version__, "| Pillow", PIL.__version__)
@@ -109,10 +113,45 @@ print("IMAGES_DIR  :", IMAGES_DIR.resolve())
             """### Step 3 — Load model
 
 Straight `LlavaNext*` load only (no `AutoModel` fallback — it hits the same CLIP stack). Set `LOAD_IN_8BIT = True` after the stack works.
+
+Starts with a small **Pillow self-check** (clear `sys.modules` + reinstall if `StrOrBytesPath` is missing) so this cell still works if you re-ran it after an older import.
 """
         ),
         code(
             """\
+import subprocess
+import sys
+
+
+def _purge_pil_modules():
+    for k in list(sys.modules):
+        if k == "PIL" or k.startswith("PIL."):
+            del sys.modules[k]
+
+
+def _ensure_pillow_typing():
+    _purge_pil_modules()
+    try:
+        from PIL._typing import StrOrBytesPath  # noqa: F401
+        return
+    except ImportError:
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-q",
+                "--force-reinstall",
+                "Pillow>=11.0.0",
+            ],
+        )
+        _purge_pil_modules()
+        from PIL._typing import StrOrBytesPath  # noqa: F401
+
+
+_ensure_pillow_typing()
+
 import torch
 import transformers
 from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration, BitsAndBytesConfig
