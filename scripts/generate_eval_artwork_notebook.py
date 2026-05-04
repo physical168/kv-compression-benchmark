@@ -364,28 +364,49 @@ def run_generate_vision(image_path: str, prompt: str, method: str, compression_r
         ),
 
         # ── Step 7 ──────────────────────────────────────────────────────────
-        md("### Step 7 — Inference loop"),
+        md(
+            """### Step 7 — Inference loop
+
+结果写入 **Step 4** 的 `RUNS_PATH`（例如 Drive 下 `artwork_eval_runs/artwork_runs.csv`）。若本格跑完仍没有 CSV，多半是 **`image_path` 在 Colab 上不存在**：请把图片放在 `REPO_DIR/datasets/artwork/images/`（与 `paintings.csv` 里 `image_url` 的文件名一致），或把 `REPO_DIR` 指到含该目录的仓库根。
+
+本格结束会打印统计：`written` / `skip_missing_image` / `skip_done`。
+"""
+        ),
         code(
             """\
 from tqdm.auto import tqdm
 
 done = load_done(RUNS_PATH)
+n_written = 0
+n_skip_done = 0
+n_skip_missing = 0
+
+n_rows = len(df)
+n_images_ok = sum(1 for _, r in df.iterrows() if os.path.isfile(r["image_path"])) if n_rows else 0
+print("Step 7 — df rows:", n_rows, "| image_path exists:", n_images_ok)
+print("IMAGES_DIR:", IMAGES_DIR)
+if n_rows:
+    _p0 = df.iloc[0]["image_path"]
+    print("First image_path:", _p0, "| exists:", os.path.isfile(_p0))
 
 for cfg in CONFIGS:
     name, method, use_cpt = cfg_name(cfg), cfg["method"], bool(cfg["use_cpt"])
     for ratio in COMPRESSION_RATIOS:
         for qtype in QUERY_TYPES:
             for i, row in tqdm(df.iterrows(), total=len(df), desc=f"{name}_r{ratio}_{qtype}", leave=False):
-                # Get the list of (prompt, gold) for this row and qtype
                 queries = get_prompts_for_row(row, qtype, use_cpt)
-                
+
                 for q_idx, (prompt, gold) in enumerate(queries):
                     row_key = f"{i}_q{q_idx}"
                     key = (name, str(ratio), qtype, row_key)
-                    if key in done: continue
-                    
-                    if not os.path.isfile(row["image_path"]): continue
-                    
+                    if key in done:
+                        n_skip_done += 1
+                        continue
+
+                    if not os.path.isfile(row["image_path"]):
+                        n_skip_missing += 1
+                        continue
+
                     err, pred_raw = "", ""
                     t0 = time.perf_counter()
                     try:
@@ -393,17 +414,39 @@ for cfg in CONFIGS:
                     except Exception as e:
                         err = str(e)[:500]
                     latency_ms = (time.perf_counter() - t0) * 1000.0
-                    
-                    append_row(RUNS_PATH, {
-                        "config": name, "method": method, "use_cpt": use_cpt,
-                        "compression_ratio": ratio, "query_type": qtype,
-                        "row_id": row_key, "image_file": row["image_file"],
-                        "gold": gold, "pred_raw": pred_raw, "pred_label": pred_raw.strip().lower()[:80],
-                        "latency_ms": latency_ms, "error": err
-                    })
-                    if not err: done.add(key)
+
+                    append_row(
+                        RUNS_PATH,
+                        {
+                            "config": name,
+                            "method": method,
+                            "use_cpt": use_cpt,
+                            "compression_ratio": ratio,
+                            "query_type": qtype,
+                            "row_id": row_key,
+                            "image_file": row["image_file"],
+                            "gold": gold,
+                            "pred_raw": pred_raw,
+                            "pred_label": pred_raw.strip().lower()[:80],
+                            "latency_ms": latency_ms,
+                            "error": err,
+                        },
+                    )
+                    n_written += 1
+                    if not err:
+                        done.add(key)
                     gc.collect()
-                    if torch.cuda.is_available(): torch.cuda.empty_cache()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+
+print(
+    "Step 7 summary — written:", n_written,
+    "| skip_done:", n_skip_done,
+    "| skip_missing_image:", n_skip_missing,
+)
+if n_written == 0:
+    print("未写入任何行：请确认图片已同步到 IMAGES_DIR，且路径与 paintings.csv 中文件名一致。")
+    print("RUNS_PATH:", RUNS_PATH)
 """
         ),
 
