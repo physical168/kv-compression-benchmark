@@ -47,7 +47,7 @@ Vision-Language Model benchmark on the paintings dataset.
 
         # ── Step 1 ──────────────────────────────────────────────────────────
         md("### Step 1 — Install dependencies"),
-        code("!pip install -q -U git+https://github.com/huggingface/transformers.git accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress pillow"),
+        code("!pip install -q -U git+https://github.com/huggingface/transformers.git accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress pillow Pillow"),
 
         # ── Step 2 ──────────────────────────────────────────────────────────
         md("### Step 2 — Mount Google Drive & set paths"),
@@ -154,7 +154,7 @@ MAX_ROWS             = 2
 MAX_NEW_TOKENS       = 40
 RESUME_FROM_CHECKPOINT = True
 
-COMPRESSION_RATIOS   = [0.2, 0.4, 0.6, 0.8, 0.9, 0.95]
+COMPRESSION_RATIOS   = [0.4, 0.8, 0.95]
 CONFIGS = [
     {"method": "ea",    "use_cpt": False},
     {"method": "kvzip", "use_cpt": False},
