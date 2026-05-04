@@ -47,7 +47,13 @@ Vision-Language Model benchmark on the paintings dataset.
 
         # ── Step 1 ──────────────────────────────────────────────────────────
         md("### Step 1 — Install dependencies"),
-        code("!pip install -q -U git+https://github.com/huggingface/transformers.git accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress pillow Pillow"),
+        code(
+            """!pip install -q -U git+https://github.com/huggingface/transformers.git accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress pillow
+!pip install -q --force-reinstall Pillow==10.2.0
+import os
+print(\"\\nInstallation complete. Restarting runtime to apply PIL changes...\")
+os.kill(os.getpid(), 9)"""
+        ),
 
         # ── Step 2 ──────────────────────────────────────────────────────────
         md("### Step 2 — Mount Google Drive & set paths"),
