@@ -150,7 +150,7 @@ from urllib.parse import unquote
 import pandas as pd
 from PIL import Image
 
-MAX_ROWS             = 0
+MAX_ROWS             = 2
 MAX_NEW_TOKENS       = 40
 RESUME_FROM_CHECKPOINT = True
 
