@@ -47,20 +47,86 @@ Vision-Language Model benchmark on the paintings dataset.
 
         # ── Step 1 ──────────────────────────────────────────────────────────
         md(
-            """### Step 1 — Install dependencies (run once)
+            """### Step 1 — Install dependencies（本格一般只跑一次）
 
-Colab can keep an old Pillow C extension (`_imaging.so`) loaded in the running Python process. Reinstalling Pillow in-place is not enough because C extensions cannot be unloaded. This cell installs dependencies, compiles Pillow from source, then **restarts the kernel on purpose**. After the restart, continue from **Step 2**; do not re-run Step 1 unless you intentionally want to reinstall dependencies.
+Colab 里旧的 Pillow C 扩展 `_imaging.so` 会留在**当前 Python 进程**里，光 `pip` 重装不够，需要**重启内核**后才会加载新编译的扩展。
+
+- 本格末尾会**请求重启内核**（不是机器坏了）。Colab 有时用「会话崩溃 / 不明原因」提示，**可以忽略**；重启完成后请从 **Step 2** 继续。
+- **不要反复运行 Step 1**：否则会一次次重启。若已装过，本格会自动跳过。
+- 若要强制重装：在 Colab 里删掉文件 `/content/.eval_artwork_llava_step1_done` 后再运行本格。
 """
         ),
         code(
-            """# Run this cell once. It intentionally restarts the kernel at the end.
-!pip install -q -U "transformers>=5.0" accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress
-!pip uninstall -y Pillow pillow
-!pip install -q --no-binary Pillow "Pillow==10.4.0"
+            """# One-time install + optional kernel restart (see Step 1 markdown above).
+from __future__ import annotations
 
 import os
-print("Dependencies installed. Restarting kernel now; after restart, continue from Step 2.")
-os.kill(os.getpid(), 9)"""
+import subprocess
+import sys
+from pathlib import Path
+
+_MARK = Path("/content/.eval_artwork_llava_step1_done") if os.path.isdir("/content") else Path(
+    ".eval_artwork_llava_step1_done"
+)
+
+
+def _pil_import_ok() -> bool:
+    try:
+        from PIL import Image  # noqa: F401
+
+        return True
+    except Exception:
+        return False
+
+
+if _MARK.is_file() and _pil_import_ok():
+    print("Step 1 已做过：标记存在且 Pillow 可导入。请直接从 Step 2 继续。")
+    print("若要强制重装依赖，请先删除:", _MARK.resolve())
+else:
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            "-U",
+            "transformers>=5.0",
+            "accelerate",
+            "bitsandbytes",
+            "pandas",
+            "scikit-learn",
+            "matplotlib",
+            "tqdm",
+            "kvpress",
+        ]
+    )
+    subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y", "Pillow", "pillow"])
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            "--no-binary",
+            "Pillow",
+            "Pillow==10.4.0",
+        ]
+    )
+    _MARK.write_text("ok", encoding="utf-8")
+    print("依赖与 Pillow(源码编译)已装好。正在请求**重启内核**…")
+    print("（Colab 若弹出「会话崩溃」多为误报；重启后请从 Step 2 继续，勿重复跑本格。）")
+    try:
+        from IPython import get_ipython
+
+        ip = get_ipython()
+        if ip is not None and getattr(ip.kernel, "do_shutdown", None) is not None:
+            ip.kernel.do_shutdown(restart=True)
+        else:
+            os._exit(0)
+    except Exception:
+        os.kill(os.getpid(), 9)"""
         ),
 
         # ── Step 2 ──────────────────────────────────────────────────────────
@@ -112,7 +178,7 @@ print("IMAGES_DIR  :", IMAGES_DIR.resolve())
 
 Straight `LlavaNext*` load only (no `AutoModel` fallback). Set `LOAD_IN_8BIT = True` after everything works.
 
-> **Prerequisite**: Step 1 must have restarted the kernel. After that restart, continue from Step 2 to Step 3.
+> **Prerequisite**: Step 1 has run once (kernel restarted or Step 1 printed “已做过”). Then run Step 2 before this cell.
 """
         ),
         code(
