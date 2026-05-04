@@ -33,15 +33,15 @@ OUT = ROOT / "eval_artwork_llava.ipynb"
 def main() -> None:
     cells = [
         md(
-            """# Artwork Evaluation: ExpectedAttention · KVzip · Finch · FinchWithCPT
+            """# Artwork Evaluation (Llava): ExpectedAttention (+ optional CPT)
 
 Vision-Language Model benchmark on the paintings dataset.
 
-**Dataset**: `datasets/artwork/paintings.csv`
-**Images**: `datasets/artwork/images/`
-**Presses**: ExpectedAttention, KVzip, Finch, FinchWithCPT
-**Ratios**: `[0.2, 0.4, 0.6, 0.8, 0.9, 0.95]`
-**Queries**: 10 Filters + 10 Extracts from `image_queries.yaml`
+**Dataset**: `datasets/artwork/paintings.csv`  
+**Images**: `datasets/artwork/images/`  
+**Presses (default)**: **ExpectedAttention** with and without CPT prefix. *KVzip / Finch are off by default* — current kvpress builds target plain CausalLM; see Step 6.  
+**Ratios**: configurable in Step 4 (defaults `[0.4, 0.8, 0.95]`).  
+**Queries**: filter + extract prompts built in Step 5.
 """
         ),
 
@@ -254,12 +254,25 @@ MAX_NEW_TOKENS       = 40
 RESUME_FROM_CHECKPOINT = True
 
 COMPRESSION_RATIOS   = [0.4, 0.8, 0.95]
+
+# KVzipPress (kvpress) wraps model.model.forward and reads kwargs["input_ids"]; Llava multimodal
+# forwards differ from plain CausalLM → you saw errors like KeyError around input_ids.
+# FinchPress needs update_model_and_tokenizer + exactly one <|finch_sep|> in the token stream;
+# hooks target model.model.embed_tokens — not wired for this notebook's Llava chat template.
+# Default: **EA only** (+ CPT ablation). Set flags True to try kvzip/finch anyway (may still fail).
+ENABLE_KVZIP_ON_LLAVA = False
+ENABLE_FINCH_ON_LLAVA = False
+
 CONFIGS = [
-    {"method": "ea",    "use_cpt": False},
-    {"method": "kvzip", "use_cpt": False},
-    {"method": "finch", "use_cpt": False},
-    {"method": "finch", "use_cpt": True},
+    {"method": "ea", "use_cpt": False},
+    {"method": "ea", "use_cpt": True},
 ]
+if ENABLE_KVZIP_ON_LLAVA:
+    CONFIGS.append({"method": "kvzip", "use_cpt": False})
+if ENABLE_FINCH_ON_LLAVA:
+    CONFIGS.append({"method": "finch", "use_cpt": False})
+    CONFIGS.append({"method": "finch", "use_cpt": True})
+
 QUERY_TYPES = ["filter", "extract"]
 
 RUNS_PATH    = RUN_DIR / "artwork_runs.csv"
@@ -357,14 +370,27 @@ print(f"Loaded {len(df)} rows. Accuracy will be measured against 'movement' and 
         ),
 
         # ── Step 6 ──────────────────────────────────────────────────────────
-        md("### Step 6 — Inference adapters"),
+        md(
+            """### Step 6 — Inference adapters
+
+- **ExpectedAttention**：与 Llava 多模态 `generate` 兼容（你表格里 `ea_cpt0` 正常）。
+- **KVzip / Finch**：当前 **NVIDIA kvpress** 实现主要针对纯文本 CausalLM；在 Llava 上你遇到的现象（`input_ids` 相关异常、`No delimiter token ID`）来自这一不匹配，不是数据坏了。默认已在 Step 4 关闭；若课程必须用这两种 press，请用仓库里 **纯文本** eval 笔记本，或为 VLM 单独 fork kvpress。
+
+- **extract 准确率为 0**：例如金标 `religious art`、模型答 `portrait` ——属于**标注/模型理解**与脚本里 `is_correct` 子串规则的组合；filter 任务仍可对。
+- **`image file is truncated`**：该 JPG 在 Drive 上只有几十字节，需**重新上传**完整文件。
+"""
+        ),
         code(
             """\
 from kvpress import ExpectedAttentionPress, KVzipPress, FinchPress
 
 _PRESS_MAP = {"ea": ExpectedAttentionPress, "kvzip": KVzipPress, "finch": FinchPress}
 
+
 def run_generate_vision(image_path: str, prompt: str, method: str, compression_ratio: float) -> str:
+    sz = os.path.getsize(image_path)
+    if sz < 512:
+        raise OSError(f"Image file too small ({sz} bytes), likely truncated upload: {image_path}")
     image = Image.open(image_path).convert("RGB")
     conversation = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": prompt}]}]
     formatted_prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
