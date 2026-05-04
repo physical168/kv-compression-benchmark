@@ -408,38 +408,58 @@ for cfg in CONFIGS:
         ),
 
         # ── Step 8 ──────────────────────────────────────────────────────────
-        md("### Step 8 — Summary"),
+        md(
+            """### Step 8 — Summary
+
+需要先有 **Step 7** 写出的 `artwork_runs.csv`（路径即 Step 4 里的 `RUNS_PATH`）。若文件不存在，本格会提示而不是报错。
+
+If `artwork_runs.csv` is missing, run **Step 7** first.
+"""
+        ),
         code(
             """\
 import matplotlib.pyplot as plt
 import numpy as np
-runs = pd.read_csv(RUNS_PATH)
-runs["error"] = runs["error"].fillna("").astype(str)
-ok = runs[runs["error"] == ""].copy()
+from pathlib import Path
 
-def is_correct(pred, gold):
-    p, g = str(pred).strip().lower(), str(gold).strip().lower()
-    return g in p or p in g
+if "RUNS_PATH" not in globals():
+    raise RuntimeError("RUNS_PATH 未定义：请先运行 Step 2 与 Step 4。")
 
-ok["correct"] = ok.apply(lambda r: is_correct(r["pred_label"], r["gold"]), axis=1)
+if not Path(RUNS_PATH).is_file():
+    print("未找到结果文件:", RUNS_PATH)
+    print("请先运行 Step 7（推理循环）生成 CSV，再运行本格。")
+else:
+    runs = pd.read_csv(RUNS_PATH)
+    runs["error"] = runs["error"].fillna("").astype(str)
+    ok = runs[runs["error"] == ""].copy()
 
-summary = ok.groupby(["query_type", "config", "compression_ratio"]).agg(
-    accuracy=("correct", "mean"),
-    latency_ms=("latency_ms", "mean")
-).reset_index()
-display(summary)
+    def is_correct(pred, gold):
+        p, g = str(pred).strip().lower(), str(gold).strip().lower()
+        return g in p or p in g
 
-# Plotting Accuracy
-for qt in summary["query_type"].unique():
-    subset = summary[summary["query_type"] == qt]
-    plt.figure(figsize=(10, 5))
-    for cfg in subset["config"].unique():
-        d = subset[subset["config"] == cfg].sort_values("compression_ratio")
-        plt.plot(d["compression_ratio"], d["accuracy"], marker='o', label=cfg)
-    plt.title(f"Accuracy vs Ratio ({qt})")
-    plt.xlabel("Compression Ratio")
-    plt.ylabel("Accuracy")
-    plt.legend(); plt.grid(True); plt.show()
+    if ok.empty:
+        print("没有 error 为空的行；请检查 Step 7 输出或 runs 中的 error 列。")
+        display(runs.head(10))
+    else:
+        ok["correct"] = ok.apply(lambda r: is_correct(r["pred_label"], r["gold"]), axis=1)
+        summary = ok.groupby(["query_type", "config", "compression_ratio"]).agg(
+            accuracy=("correct", "mean"),
+            latency_ms=("latency_ms", "mean"),
+        ).reset_index()
+        display(summary)
+
+        for qt in summary["query_type"].unique():
+            subset = summary[summary["query_type"] == qt]
+            plt.figure(figsize=(10, 5))
+            for cfg in subset["config"].unique():
+                d = subset[subset["config"] == cfg].sort_values("compression_ratio")
+                plt.plot(d["compression_ratio"], d["accuracy"], marker="o", label=cfg)
+            plt.title(f"Accuracy vs Ratio ({qt})")
+            plt.xlabel("Compression Ratio")
+            plt.ylabel("Accuracy")
+            plt.legend()
+            plt.grid(True)
+            plt.show()
 """
         )
     ]
