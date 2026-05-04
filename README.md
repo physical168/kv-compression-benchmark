@@ -56,6 +56,15 @@ You need a Hugging Face account and token to access Meta Llama models used in th
 13. **Notebook generators**:
    - v2: `python scripts/generate_eval_extract_notebook.py`
    - v3: `python scripts/generate_eval_extract_notebook_v3.py`
+14. **`eval_artwork_llava.ipynb`**: Llama 3–based **LLaVA-Next** on **`datasets/artwork/`**, aligned with [CompressionExperiments](https://github.com/GabrieleSanmartino/CompressionExperiments): same **`image_queries.yaml` strings**, same **user prompt** pattern as `engine.py` (image filter `1`/`0`, extract suffix), same **results tree** `results/artwork/{model_tag}/{PressClass}/{ratio}/results.csv` (`record_id`, `query`, `press`, `ratio`, `answer`), and **P/R/F1** via bundled **`benchmarks/artwork_eval/`** (`evaluation/evaluator.py`, `evaluation/evaluation_config.yaml`, `ground_truth/query_*.csv`, `llava_kvpress_patch.py`). Regenerate the notebook: `python scripts/generate_eval_artwork_notebook.py`. Offline eval only: `python benchmarks/artwork_eval/evaluate.py --results-dir <RUN_DIR>/results`.
+
+### Reference: CompressionExperiments (course-line framework)
+
+[GabrieleSanmartino/CompressionExperiments](https://github.com/GabrieleSanmartino/CompressionExperiments) is the fuller **experiment_manager** layout: `configs/image_queries.yaml`, `run_compression_image.py` (CLI sweep over `--ratios` / `--press`), `src/engine.py` (**transformers 5.x** `DynamicCache` + `BasePress.forward_hook` monkeypatches), results under `results/{dataset}/{model_tag}/{press}/{ratio}/results.csv`, and **offline P/R/F1** via `evaluate.py` + `evaluation/evaluation_config.yaml` + `ground_truth/`. It vendors **kvpress** as a git submodule (GabrieleSanmartino line).
+
+**Windows:** some `datasets/artwork/images/*` paths exceed legacy `MAX_PATH`; run `git config --global core.longpaths true` before clone/checkout, or clone to a short path.
+
+This repo mirrors the artwork slice under **`benchmarks/artwork_eval/`** so `eval_artwork_llava` can match CE CSVs and metrics without cloning the full upstream tree.
 
 ## Features
 

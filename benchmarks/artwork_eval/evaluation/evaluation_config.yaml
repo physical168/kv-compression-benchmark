@@ -1,0 +1,49 @@
+movie:
+  gt_dir: ground_truth/movie
+  filter_query_mapping:
+    "Is this review clearly positive?": query_000
+    "Is this review clearly negative?": query_001
+    "Does this review mention excellent acting?": query_002
+    "Does this review mention a poor plot?": query_003
+    "Does this review mention great cinematography?": query_004
+    "Does this review mention terrible dialogue?": query_005
+    "Is this a rave review?": query_006
+    "Is this a scathing review?": query_007
+    "Does this review praise the soundtrack?": query_008
+    "Does this review criticize the special effects?": query_009
+  extract_query_mapping:
+    "Extract the sentiment of this review. (positive or negative)": query_010
+    "Extract the movie title mentioned in this review.(or 'none' if not mentioned)": query_011
+    "Extract one actor that is praised particularly in this review. (or 'none' if no actor is praised)": query_012
+    "Extract one aspect of the movie that is criticized in this review. (choose from plot, acting, cinematography, soundtrack, special effects, dialogue, or 'none' if no aspect is criticized)": query_013
+    "Extract whether the reviewer would recommend the movie based on this review. (yes/no)": query_014
+    "Extract the main emotion expressed by the reviewer in this review. (e.g., joy, disappointment, anger, excitement, confusion)": query_015
+    "Extract the director's name mentioned in this review. (or 'none' if not mentioned)": query_016
+    "Extract whether this review contains spoilers. (yes/no)": query_017
+    "Extract whether the reviewer compares the movie to another film in this review. (yes/no)": query_018
+    "Extract the target audience implied or stated in this review. (e.g., families, children, adults, fans of action, 'none')": query_019
+
+artwork:
+  gt_dir: ground_truth
+  filter_query_mapping:
+    "Does this painting depict Madonna and Child?": query_000
+    "Does this painting depict more than two people?": query_001
+    "Does this painting depict more than three people?": query_002
+    "Does this painting depict saints identifiable by their halos?": query_003
+    "Does this painting depict a scene in which death is a dominant theme?": query_004
+    "Does this painting depict a religious scene?": query_005
+    "Does this painting show a still life?": query_006
+    "Does this painting depict a scene of war?": query_007
+    "Does this painting depict an angel with wings?": query_008
+    "Does this painting depict a crucifixion scene?": query_009
+  extract_query_mapping:
+    "Extract the number of people depicted in this painting.": query_028
+    "Extract the primary background color of this painting. Choose from Red, Blue, Yellow, Green, Orange, Purple, Black, White.": query_030
+    "Extract the number of saints with halos from this painting.": query_031
+    "Extract the number of animals from this painting.": query_032
+    "Extract the gender of the main character from this painting. (male / female / undefined)": query_034
+    "Extract the type of setting of this painting. (interior / exterior / undefined)": query_042
+    "Extract the dominant material depicted in this painting. (stone / wood / metal / fabric / undefined)": query_043
+    "Extract the approximate lighting type in this painting. (natural / candle / undefined)": query_047
+    "Extract the level of movement in this painting. (static / moderate / dynamic)": query_048
+    "Extract the landscape type depicted in this painting. (mountain / forest / sea / plain / undefined)": query_049

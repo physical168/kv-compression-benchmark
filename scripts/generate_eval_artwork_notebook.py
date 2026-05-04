@@ -1,11 +1,16 @@
-"""Generate eval_artwork_llava.ipynb for Colab runs.
+"""Generate eval_artwork_llava.ipynb aligned with CompressionExperiments artwork flow.
 
-Uses paintings.csv as the dataset.
-Hardcodes queries from image_queries.yaml.
+- Queries: benchmarks/artwork_eval/configs/image_queries.yaml (same strings as CE).
+- Prompts: same answer_prefix pattern as experiment_manager/src/engine.py (image filter 1/0,
+  image extract + suffix).
+- Outputs: results/{dataset}/{model_tag}/{press}/{ratio}/results.csv with columns
+  record_id, query, press, ratio, answer.
+- Step 8: EvaluationManager + P/R/F1 (evaluation_config.yaml + ground_truth/).
 
 Run from repo root:
     python scripts/generate_eval_artwork_notebook.py
 """
+
 from __future__ import annotations
 
 import json
@@ -33,19 +38,22 @@ OUT = ROOT / "eval_artwork_llava.ipynb"
 def main() -> None:
     cells = [
         md(
-            """# Artwork Evaluation (Llava): ExpectedAttention (+ optional CPT)
+            """# Artwork Evaluation (Llava) — aligned with CompressionExperiments
 
-Vision-Language Model benchmark on the paintings dataset.
+Vision-language benchmark on **paintings** using the same **queries** as
+`CompressionExperiments/experiment_manager/configs/image_queries.yaml`, the same **user prompt**
+shape as `engine.py` (`run_single`, image modality), and the same **results layout** as
+`src/utils.py` / `evaluate.py`:
 
-**Dataset**: `datasets/artwork/paintings.csv`  
-**Images**: `datasets/artwork/images/`  
-**Presses (default)**: **ExpectedAttention** with and without CPT prefix. *KVzip / Finch are off by default* — current kvpress builds target plain CausalLM; see Step 6.  
-**Ratios**: configurable in Step 4 (defaults `[0.4, 0.8, 0.95]`).  
-**Queries**: filter + extract prompts built in Step 5.
+- **Results**: `RUN_DIR/results/artwork/{model_tag}/{PressClass}/{ratio:.2f}/results.csv`
+- **Columns**: `record_id`, `query`, `press`, `ratio`, `answer`
+- **Metrics (Step 8)**: `benchmarks/artwork_eval/evaluation/EvaluationManager` → P/R/F1 vs
+  `benchmarks/artwork_eval/ground_truth/query_*.csv`
+
+**Dataset**: `datasets/artwork/paintings.csv` · **Images**: `datasets/artwork/images/`  
+**Config copy**: `benchmarks/artwork_eval/configs/image_queries.yaml`
 """
         ),
-
-        # ── Step 1 ──────────────────────────────────────────────────────────
         md(
             """### Step 1 — Install dependencies（本格一般只跑一次）
 
@@ -95,6 +103,7 @@ else:
             "accelerate",
             "bitsandbytes",
             "pandas",
+            "pyyaml",
             "scikit-learn",
             "matplotlib",
             "tqdm",
@@ -128,8 +137,6 @@ else:
     except Exception:
         os.kill(os.getpid(), 9)"""
         ),
-
-        # ── Step 2 ──────────────────────────────────────────────────────────
         md("### Step 2 — Mount Google Drive & set paths"),
         code(
             """\
@@ -162,41 +169,45 @@ RUN_DIR.mkdir(parents=True, exist_ok=True)
 FIG_DIR = RUN_DIR / "figures"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-# Dataset and images paths
+ARTWORK_EVAL_ROOT = REPO_DIR / "benchmarks" / "artwork_eval"
+IMAGE_QUERIES_YAML = ARTWORK_EVAL_ROOT / "configs" / "image_queries.yaml"
+EVAL_CONFIG_YAML = ARTWORK_EVAL_ROOT / "evaluation" / "evaluation_config.yaml"
+
 DATASET_PATH = REPO_DIR / "datasets" / "artwork" / "paintings.csv"
 IMAGES_DIR   = REPO_DIR / "datasets" / "artwork" / "images"
 
-print("RUN_DIR     :", RUN_DIR.resolve())
-print("DATASET_PATH:", DATASET_PATH.resolve())
-print("IMAGES_DIR  :", IMAGES_DIR.resolve())
+print("RUN_DIR            :", RUN_DIR.resolve())
+print("REPO_DIR           :", REPO_DIR.resolve())
+print("IMAGE_QUERIES_YAML :", IMAGE_QUERIES_YAML.resolve())
+print("DATASET_PATH       :", DATASET_PATH.resolve())
+print("IMAGES_DIR         :", IMAGES_DIR.resolve())
 """
         ),
-
-        # ── Step 3 ──────────────────────────────────────────────────────────
         md(
-            """### Step 3 — Load model
+            """### Step 3 — Load model + kvpress / Llava patches
 
-Straight `LlavaNext*` load only (no `AutoModel` fallback). 默认已开 `LOAD_IN_8BIT` 以降低 Colab OOM 概率。
+与 **CompressionExperiments** 的 `engine.py` 一致：在加载 **LlavaNext** 后应用
+`DynamicCache` / `BasePress.forward_hook` / `language_model` 等补丁，便于 **ExpectedAttention**、
+**KVzip**、**Finch** 在 transformers 5.x 下工作。
 
-> **Prerequisite**: Step 1 has run once (kernel restarted or Step 1 printed “已做过”). Then run **Step 2** before this cell.
-> **If the runtime restarts after this cell** (OOM / Colab disconnect): next time run **Step 2 → Step 3 → Step 4** in order — `RUN_DIR` and `model` are gone after restart.
-
-若本格跑完后**会话重启**：下次必须从 **Step 2** 开始（再 Step 3、Step 4），否则会出现 `RUN_DIR` / `model` 未定义。
-
-> **已经打印 `Model ready` 却仍立刻崩溃？** 多半是 **显存/内存峰值（OOM）** 或 Colab 断连。下次从 Step 2 重跑。若 8bit 仍 OOM，可把 **`LOAD_IN_8BIT = False`**（更吃显存）或换更大 GPU 运行时。
+> **Prerequisite**: Step 1 完成（必要时重启内核）→ **Step 2** → 本格。  
+> 若 OOM 或断连重启：下次 **Step 2 → Step 3 → Step 4**。
 """
         ),
         code(
             """\
+import sys
 import torch
 import transformers
 from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration, BitsAndBytesConfig
 
+if "REPO_DIR" not in globals():
+    raise RuntimeError("请先运行 Step 2 定义 REPO_DIR / RUN_DIR。")
+
 print("transformers:", transformers.__version__)
-print("imported from:", transformers.__file__)
 
 MODEL_ID = "llava-hf/llama3-llava-next-8b-hf"
-# Colab: True 省显存；若 device_map 把部分层放 CPU，必须开 llm_int8_enable_fp32_cpu_offload
+MODEL_TAG = MODEL_ID.split("/")[-1]
 LOAD_IN_8BIT = True
 
 dtype = (
@@ -222,114 +233,132 @@ model = LlavaNextForConditionalGeneration.from_pretrained(
     device_map="auto",
     quantization_config=quantization_config,
 )
-print("Model ready:", MODEL_ID)
+
+_art_eval = REPO_DIR / "benchmarks" / "artwork_eval"
+sys.path.insert(0, str(_art_eval))
+from llava_kvpress_patch import apply_kvpress_compatibility_patches
+
+apply_kvpress_compatibility_patches(model)
+print("Model ready + kvpress patches:", MODEL_ID, "| MODEL_TAG:", MODEL_TAG)
 """
         ),
-
-        # ── Step 4 ──────────────────────────────────────────────────────────
         md(
-            """### Step 4 — Configuration
+            """### Step 4 — 实验配置（与 CE 一致的目录与 press 名）
 
-**Any kernel restart** clears all variables. `RUN_DIR` / `DATASET_PATH` / `IMAGES_DIR` are created in **Step 2**; the model lives in **Step 3**. After a crash or manual restart, run **Step 2 → Step 3 → Step 4** in order (do not start from Step 4 alone).
+- **RESULTS_ROOT** = `RUN_DIR / "results"`，其下 **`artwork / MODEL_TAG / PressClass / 0.xx / results.csv`**。
+- **PRESS_NAMES**：类名字符串列表（如 `ExpectedAttentionPress`），与 `evaluation_config` / GT 评测一致。
+- 可选打开 **KVzipPress** / **FinchPress**（需本机环境支持；Finch 会在每次推理前 `update_model_and_tokenizer`）。
 
-内核一旦重启，内存里的变量会清空。`RUN_DIR` 等在 **Step 2** 定义，模型在 **Step 3** 加载。会话崩溃或手动重启后，请按 **Step 2 → Step 3 → Step 4** 顺序执行，不要单独从 Step 4 开始。
+内核重启后请 **Step 2 → Step 3 → Step 4**。
 """
         ),
         code(
             """\
 from __future__ import annotations
-import csv, gc, os, re, time
+import gc
+import os
+import time
+from pathlib import Path
 from urllib.parse import unquote
+
 import pandas as pd
+import yaml
 from PIL import Image
 
-if "RUN_DIR" not in globals():
-    raise RuntimeError(
-        "RUN_DIR 未定义：当前内核里还没跑过 Step 2，或刚发生过重启导致变量清空。"
-        "请先运行 Step 2，再运行 Step 3（如需模型），最后运行本格。"
-    )
+if "RUN_DIR" not in globals() or "MODEL_TAG" not in globals():
+    raise RuntimeError("请先顺序运行 Step 2、Step 3。")
 
-MAX_ROWS             = 2
-MAX_NEW_TOKENS       = 40
-RESUME_FROM_CHECKPOINT = True
+DATASET_NAME = "artwork"
+RESULTS_ROOT = RUN_DIR / "results"
+RESULTS_ROOT.mkdir(parents=True, exist_ok=True)
 
-COMPRESSION_RATIOS   = [0.4, 0.8, 0.95]
+MAX_ROWS = 0  # 0 = 全表；否则 head(MAX_ROWS)
+MAX_NEW_TOKENS = 50
+COMPRESSION_RATIOS = [0.4, 0.8, 0.95]
 
-# KVzipPress (kvpress) wraps model.model.forward and reads kwargs["input_ids"]; Llava multimodal
-# forwards differ from plain CausalLM → you saw errors like KeyError around input_ids.
-# FinchPress needs update_model_and_tokenizer + exactly one <|finch_sep|> in the token stream;
-# hooks target model.model.embed_tokens — not wired for this notebook's Llava chat template.
-# Default: **EA only** (+ CPT ablation). Set flags True to try kvzip/finch anyway (may still fail).
+# 与 CE PRESS_REGISTRY 键一致（写入 results.csv 的 press 列）
+PRESS_NAMES = ["ExpectedAttentionPress"]
 ENABLE_KVZIP_ON_LLAVA = False
 ENABLE_FINCH_ON_LLAVA = False
 
-CONFIGS = [
-    {"method": "ea", "use_cpt": False},
-    {"method": "ea", "use_cpt": True},
-]
-if ENABLE_KVZIP_ON_LLAVA:
-    CONFIGS.append({"method": "kvzip", "use_cpt": False})
-if ENABLE_FINCH_ON_LLAVA:
-    CONFIGS.append({"method": "finch", "use_cpt": False})
-    CONFIGS.append({"method": "finch", "use_cpt": True})
+if ENABLE_KVZIP_ON_LLAVA and "KVzipPress" not in PRESS_NAMES:
+    PRESS_NAMES = PRESS_NAMES + ["KVzipPress"]
+if ENABLE_FINCH_ON_LLAVA and "FinchPress" not in PRESS_NAMES:
+    PRESS_NAMES = PRESS_NAMES + ["FinchPress"]
 
-QUERY_TYPES = ["filter", "extract"]
+# ---- 与 engine.run_single 一致的 image extract 后缀 ----
+_IMAGE_EXTRACT_SUFFIX = (
+    " (be concise, no explanation, no introductory text, just the answer,"
+    " output datatype: STRING, do not repeat the datatype in the answer) ?"
+)
 
-RUNS_PATH    = RUN_DIR / "artwork_runs.csv"
-SUMMARY_PATH = RUN_DIR / "artwork_summary.csv"
 
-CK_FIELDS = [
-    "config", "method", "use_cpt", "compression_ratio", "query_type",
-    "row_id", "image_file", "gold", "pred_raw", "pred_label",
-    "latency_ms", "error",
-]
+def build_answer_prefix(question: str, is_boolean: bool) -> str:
+    context_ref = "image"
+    if is_boolean:
+        instruction = (
+            f"Answer the following question based on the {context_ref}"
+            " with '1' or '0'. Do not add any other comments."
+        )
+        formatted_question = question
+    else:
+        instruction = (
+            f"Answer the following question based on the {context_ref}."
+            " Do not add any other comments."
+        )
+        formatted_question = question + _IMAGE_EXTRACT_SUFFIX
+    return f"{instruction} {formatted_question}\nAnswer: "
 
-def cfg_name(cfg: dict) -> str:
-    return f"{cfg['method']}_cpt{int(cfg['use_cpt'])}"
 
-def url_to_local_filename(url: str) -> str:
-    fname = url.split("/")[-1]
-    return unquote(fname)
-
-def load_done(path: Path) -> set:
-    if not path.is_file() or not RESUME_FROM_CHECKPOINT:
-        return set()
-    df = pd.read_csv(path)
-    done = set()
-    for _, r in df.iterrows():
-        err = str(r.get("error", "")).strip().lower()
-        if err in ("", "nan"):
-            # Use (config, ratio, query_type, row_id) as unique key
-            done.add((str(r["config"]), str(r["compression_ratio"]), str(r["query_type"]), str(r["row_id"])))
-    return done
-
-def append_row(path: Path, row: dict) -> None:
-    newfile = not path.is_file()
-    with path.open("a", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=CK_FIELDS, extrasaction="ignore")
-        if newfile: w.writeheader()
-        w.writerow({k: row.get(k, "") for k in CK_FIELDS})
-        f.flush()
-        os.fsync(f.fileno())
+def save_results_ce_style(df: pd.DataFrame, base_dir: Path, dataset: str, model_tag: str) -> None:
+    # Same layout as CE utils.save_results: one results.csv per (press, ratio).
+    if df.empty:
+        print("save_results_ce_style: empty DataFrame, skip.")
+        return
+    base_dir = Path(base_dir)
+    for (press, ratio), group in df.groupby(["press", "ratio"]):
+        ratio_tag = f"{float(ratio):.2f}"
+        out_dir = base_dir / dataset / model_tag / str(press) / ratio_tag
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / "results.csv"
+        group.to_csv(out_path, index=False)
+        print("Saved", out_path)
 """
         ),
-
-        # ── Step 5 ──────────────────────────────────────────────────────────
         md(
-            """### Step 5 — Load dataset & build dynamic queries
+            """### Step 5 — 读 image_queries.yaml、构建记录与问句
 
-若图片在 Drive 上**文件名仍带 `%20`**（上传 zip 或未解码重命名），而 `image_url` 里是编码形式，仅用 `unquote` 后的路径会找不到文件。下面 `image_path` 会**先试解码名、再试 URL 尾段的原始字面名**。
+`record_id` 与 **CompressionExperiments** 的 `load_dataset` 一致：当前 `paintings.csv` 行序下的
+**从 0 开始的行号**（与 `ground_truth/query_*.csv` 的 `_index_artworks` 对齐）。
+
+图片路径：先试 URL 解码文件名，再试原始 `%20` 字面名（Drive 上常见）。
 """
         ),
         code(
             """\
+from kvpress import ExpectedAttentionPress, FinchPress, KVzipPress
+
+_PRESS_REGISTRY = {
+    "ExpectedAttentionPress": ExpectedAttentionPress,
+    "KVzipPress": KVzipPress,
+    "FinchPress": FinchPress,
+}
+
+with open(IMAGE_QUERIES_YAML, encoding="utf-8") as f:
+    _y = yaml.safe_load(f)
+art_cfg = _y["artwork"]
+filter_queries = list(art_cfg["filter_queries"])
+extract_queries = list(art_cfg["extract_queries"])
+image_url_column = art_cfg.get("image_url_column", "image_url")
+
 df = pd.read_csv(DATASET_PATH)
-df = df[df["image_url"].notna()].copy().reset_index(drop=True)
-if MAX_ROWS > 0: df = df.head(MAX_ROWS)
+df = df[df[image_url_column].notna()].copy().reset_index(drop=True)
+if MAX_ROWS and MAX_ROWS > 0:
+    df = df.head(int(MAX_ROWS))
+df.insert(0, "record_id", range(len(df)))
 
 
 def resolve_artwork_image_path(url: str) -> str:
-    \"\"\"Prefer human-readable filename; fall back to %-encoded literal on disk (common on Drive).\"\"\"
     tail = url.split("/")[-1].split("?")[0]
     p_decoded = IMAGES_DIR / unquote(tail)
     p_raw = IMAGES_DIR / tail
@@ -340,226 +369,186 @@ def resolve_artwork_image_path(url: str) -> str:
     return str(p_decoded)
 
 
-df["image_file"] = df["image_url"].apply(url_to_local_filename)
-df["image_path"] = df["image_url"].apply(resolve_artwork_image_path)
-df["cpt"] = df.apply(lambda r: f"Context: This is a painting titled '{r['title']}'.", axis=1)
+df["image_path"] = df[image_url_column].apply(resolve_artwork_image_path)
 
-# Dynamic Query Templates
-def get_prompts_for_row(row: pd.Series, qtype: str, use_cpt: bool) -> list[tuple[str, str]]:
-    \"\"\"Returns a list of (prompt, gold_answer) tuples for a row.\"\"\"
-    cpt_prefix = (row["cpt"] + "\\n") if use_cpt else ""
-    mv = row["movement"].strip()
-    gn = row["genre"].strip().lower()
-    
-    if qtype == "filter":
-        # We ask if it IS the correct movement. Gold is always 'yes'.
-        return [
-            (f"{cpt_prefix}Is this a {mv} painting? Answer yes or no.", "yes"),
-            (f"{cpt_prefix}Does this artwork belong to the {mv} movement? Answer yes or no.", "yes"),
-        ]
-    else: # extract
-        # We ask for the genre. Gold is the genre value.
-        choices = "Choices: portrait, religious art, history painting, mythological painting, nude, genre art."
-        return [
-            (f"{cpt_prefix}What is the genre of this painting? {choices} Answer with the genre name only.", gn),
-            (f"{cpt_prefix}Identify the genre of this artwork. {choices}", gn),
-        ]
+queries_plan: list[tuple[str, bool]] = (
+    [(q, True) for q in filter_queries] + [(q, False) for q in extract_queries]
+)
 
-print(f"Loaded {len(df)} rows. Accuracy will be measured against 'movement' and 'genre' columns.")
+print("Rows:", len(df), "| filter_q:", len(filter_queries), "| extract_q:", len(extract_queries))
+print("Total (record × query) pairs:", len(df) * len(queries_plan))
 """
         ),
-
-        # ── Step 6 ──────────────────────────────────────────────────────────
         md(
-            """### Step 6 — Inference adapters
+            """### Step 6 — 单次推理（chat template + kvpress context）
 
-- **ExpectedAttention**：与 Llava 多模态 `generate` 兼容（你表格里 `ea_cpt0` 正常）。
-- **KVzip / Finch**：当前 **NVIDIA kvpress** 实现主要针对纯文本 CausalLM；在 Llava 上你遇到的现象（`input_ids` 相关异常、`No delimiter token ID`）来自这一不匹配，不是数据坏了。默认已在 Step 4 关闭；若课程必须用这两种 press，请用仓库里 **纯文本** eval 笔记本，或为 VLM 单独 fork kvpress。
-
-- **extract 准确率为 0**：例如金标 `religious art`、模型答 `portrait` ——属于**标注/模型理解**与脚本里 `is_correct` 子串规则的组合；filter 任务仍可对。
-- **`image file is truncated`**：该 JPG 在 Drive 上只有几十字节，需**重新上传**完整文件。
+用户消息文本 = **Step 4** 的 `build_answer_prefix(...)`（与 CE `CompressionEngine.run_single` 中
+`answer_prefix` 一致）。图像经 processor 与 CE 的 image 管线一致地放入 user turn。
 """
         ),
         code(
             """\
-from kvpress import ExpectedAttentionPress, KVzipPress, FinchPress
+import torch
 
-_PRESS_MAP = {"ea": ExpectedAttentionPress, "kvzip": KVzipPress, "finch": FinchPress}
+_tok = getattr(processor, "tokenizer", processor)
 
 
-def run_generate_vision(image_path: str, prompt: str, method: str, compression_ratio: float) -> str:
+def run_generate_vision(
+    image_path: str,
+    answer_prefix: str,
+    press_name: str,
+    compression_ratio: float,
+) -> str:
     sz = os.path.getsize(image_path)
     if sz < 512:
-        raise OSError(f"Image file too small ({sz} bytes), likely truncated upload: {image_path}")
-    image = Image.open(image_path).convert("RGB")
-    conversation = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": prompt}]}]
-    formatted_prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
-    inputs = processor(images=image, text=formatted_prompt, return_tensors="pt").to(model.device)
-    
-    gen_kwargs = {"max_new_tokens": MAX_NEW_TOKENS}
-    tok = getattr(processor, "tokenizer", processor)
-    if hasattr(tok, "pad_token_id") and tok.pad_token_id is not None:
-        gen_kwargs["pad_token_id"] = tok.pad_token_id
+        raise OSError(f"Image too small ({sz} B), likely truncated: {image_path}")
 
-    PressCls = _PRESS_MAP.get(method)
+    PressCls = _PRESS_REGISTRY[press_name]
+    press = PressCls(compression_ratio=float(compression_ratio))
+    if hasattr(press, "update_model_and_tokenizer"):
+        press.update_model_and_tokenizer(model, _tok)
+
+    image = Image.open(image_path).convert("RGB")
+    conversation = [
+        {"role": "user", "content": [{"type": "image"}, {"type": "text", "text": answer_prefix}]}
+    ]
+    formatted_prompt = processor.apply_chat_template(
+        conversation, add_generation_prompt=True
+    )
+    inputs = processor(images=image, text=formatted_prompt, return_tensors="pt").to(model.device)
+
+    gen_kwargs = {"max_new_tokens": MAX_NEW_TOKENS}
+    if getattr(_tok, "pad_token_id", None) is not None:
+        gen_kwargs["pad_token_id"] = _tok.pad_token_id
+
     with torch.no_grad():
-        if PressCls:
-            with PressCls(compression_ratio=compression_ratio)(model):
-                out = model.generate(**inputs, **gen_kwargs)
-        else:
+        with press(model):
             out = model.generate(**inputs, **gen_kwargs)
-    
-    input_len = inputs["input_ids"].shape[1]
-    return tok.decode(out[0][input_len:], skip_special_tokens=True).strip()
+
+    inp_len = inputs["input_ids"].shape[1]
+    return _tok.decode(out[0][inp_len:], skip_special_tokens=True).strip()
 """
         ),
-
-        # ── Step 7 ──────────────────────────────────────────────────────────
         md(
-            """### Step 7 — Inference loop
+            """### Step 7 — 全量推理并写入 CE 风格 results 树
 
-结果写入 **Step 4** 的 `RUNS_PATH`（例如 Drive 下 `artwork_eval_runs/artwork_runs.csv`）。若本格跑完仍没有 CSV，多半是 **`image_path` 在 Colab 上不存在**：请把图片放在 `REPO_DIR/datasets/artwork/images/`（与 `paintings.csv` 里 `image_url` 的文件名一致），或把 `REPO_DIR` 指到含该目录的仓库根。
+对每个 **press × ratio**：跑完所有 `(record_id, query)` 后写一份 **`results.csv`**
+（列：`record_id`, `query`, `press`, `ratio`, `answer`）。
 
-本格结束会打印统计：`written` / `skip_missing_image` / `skip_done`。
+若某行图片不存在则跳过该 record 的全部 query（不写入占位符，与「无结果」区分）。
 """
         ),
         code(
             """\
-from tqdm.auto import tqdm
-
-done = load_done(RUNS_PATH)
-n_written = 0
-n_skip_done = 0
+rows_all: list[dict] = []
 n_skip_missing = 0
 
-n_rows = len(df)
-n_images_ok = sum(1 for _, r in df.iterrows() if os.path.isfile(r["image_path"])) if n_rows else 0
-print("Step 7 — df rows:", n_rows, "| image_path exists:", n_images_ok)
-print("IMAGES_DIR:", IMAGES_DIR)
-if n_rows:
-    _p0 = df.iloc[0]["image_path"]
-    print("First image_path:", _p0, "| exists:", os.path.isfile(_p0))
-
-for cfg in CONFIGS:
-    name, method, use_cpt = cfg_name(cfg), cfg["method"], bool(cfg["use_cpt"])
-    for ratio in COMPRESSION_RATIOS:
-        for qtype in QUERY_TYPES:
-            for i, row in tqdm(df.iterrows(), total=len(df), desc=f"{name}_r{ratio}_{qtype}", leave=False):
-                queries = get_prompts_for_row(row, qtype, use_cpt)
-
-                for q_idx, (prompt, gold) in enumerate(queries):
-                    row_key = f"{i}_q{q_idx}"
-                    key = (name, str(ratio), qtype, row_key)
-                    if key in done:
-                        n_skip_done += 1
-                        continue
-
-                    if not os.path.isfile(row["image_path"]):
-                        n_skip_missing += 1
-                        continue
-
-                    err, pred_raw = "", ""
-                    t0 = time.perf_counter()
-                    try:
-                        pred_raw = run_generate_vision(row["image_path"], prompt, method, float(ratio))
-                    except Exception as e:
-                        err = str(e)[:500]
-                    latency_ms = (time.perf_counter() - t0) * 1000.0
-
-                    append_row(
-                        RUNS_PATH,
+for _, row in df.iterrows():
+    ip = row["image_path"]
+    if not os.path.isfile(ip):
+        n_skip_missing += 1
+        continue
+    rid = int(row["record_id"])
+    for qtext, is_bool in queries_plan:
+        ap = build_answer_prefix(qtext, is_bool)
+        for pname in PRESS_NAMES:
+            for ratio in COMPRESSION_RATIOS:
+                err = ""
+                ans = ""
+                t0 = time.perf_counter()
+                try:
+                    ans = run_generate_vision(ip, ap, pname, float(ratio))
+                except Exception as e:
+                    err = str(e)[:800]
+                _ = time.perf_counter() - t0
+                if err:
+                    print(f"[err] rid={rid} press={pname} r={ratio} q={qtext[:40]}… -> {err[:120]}")
+                else:
+                    rows_all.append(
                         {
-                            "config": name,
-                            "method": method,
-                            "use_cpt": use_cpt,
-                            "compression_ratio": ratio,
-                            "query_type": qtype,
-                            "row_id": row_key,
-                            "image_file": row["image_file"],
-                            "gold": gold,
-                            "pred_raw": pred_raw,
-                            "pred_label": pred_raw.strip().lower()[:80],
-                            "latency_ms": latency_ms,
-                            "error": err,
-                        },
+                            "record_id": rid,
+                            "query": qtext,
+                            "press": pname,
+                            "ratio": float(ratio),
+                            "answer": ans,
+                        }
                     )
-                    n_written += 1
-                    if not err:
-                        done.add(key)
-                    gc.collect()
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
-print(
-    "Step 7 summary — written:", n_written,
-    "| skip_done:", n_skip_done,
-    "| skip_missing_image:", n_skip_missing,
-)
-if n_written == 0:
-    print("未写入任何行：请确认图片已同步到 IMAGES_DIR，且路径与 paintings.csv 中文件名一致。")
-    print("RUNS_PATH:", RUNS_PATH)
+out_df = pd.DataFrame(rows_all)
+print("rows written:", len(out_df), "| skip_missing_image_records:", n_skip_missing)
+if len(out_df):
+    save_results_ce_style(out_df, RESULTS_ROOT, DATASET_NAME, MODEL_TAG)
+else:
+    print("无有效行：请检查 IMAGES_DIR 与 paintings 中 URL 对应文件名。")
+    print("RESULTS_ROOT:", RESULTS_ROOT)
 """
         ),
-
-        # ── Step 8 ──────────────────────────────────────────────────────────
         md(
-            """### Step 8 — Summary
+            """### Step 8 — 与 CE ``evaluate.py`` 相同的 P/R/F1 汇总
 
-需要先有 **Step 7** 写出的 `artwork_runs.csv`（路径即 Step 4 里的 `RUNS_PATH`）。若文件不存在，本格会提示而不是报错。
+使用 **`benchmarks/artwork_eval/evaluation/evaluator.py`** 的 `EvaluationManager`，对
+**`RESULTS_ROOT`** 下所有 **`results.csv`** 扫一遍，对齐 **`evaluation_config.yaml`** 中的
+query 文本与 **`ground_truth/query_*.csv`**。
 
-If `artwork_runs.csv` is missing, run **Step 7** first.
+也可在仓库根执行：
+`python benchmarks/artwork_eval/evaluate.py --results-dir <你的 RUN_DIR>/results`
 """
         ),
         code(
             """\
-import matplotlib.pyplot as plt
-import numpy as np
-from pathlib import Path
+import sys
 
-if "RUNS_PATH" not in globals():
-    raise RuntimeError("RUNS_PATH 未定义：请先运行 Step 2 与 Step 4。")
+if "RESULTS_ROOT" not in globals():
+    raise RuntimeError("请先运行 Step 4 与 Step 7。")
 
-if not Path(RUNS_PATH).is_file():
-    print("未找到结果文件:", RUNS_PATH)
-    print("请先运行 Step 7（推理循环）生成 CSV，再运行本格。")
+_ae = REPO_DIR / "benchmarks" / "artwork_eval"
+sys.path.insert(0, str(_ae))
+from evaluation.evaluator import EvaluationManager
+
+mgr = EvaluationManager(
+    config_path=str(EVAL_CONFIG_YAML),
+    results_dir=str(RESULTS_ROOT),
+)
+ev_df = mgr.evaluate_all()
+if ev_df.empty:
+    print("未得到任何评测行：确认 Step 7 已生成 results/artwork/.../results.csv，且 query 字符串与 yaml 完全一致。")
 else:
-    runs = pd.read_csv(RUNS_PATH)
-    runs["error"] = runs["error"].fillna("").astype(str)
-    ok = runs[runs["error"] == ""].copy()
+    display(ev_df.head(20))
+    gcols = ["dataset", "model_tag", "press", "ratio"]
+    mcols = ["precision", "recall", "f1"]
+    for label, subset in [
+        ("filter", ev_df[ev_df["query_type"] == "filter"]),
+        ("extract", ev_df[ev_df["query_type"] == "extract"]),
+        ("all", ev_df),
+    ]:
+        print("\\n===", label, "===")
+        display(subset.groupby(gcols)[mcols].mean().round(4))
 
-    def is_correct(pred, gold):
-        p, g = str(pred).strip().lower(), str(gold).strip().lower()
-        return g in p or p in g
+    summ_path = RUN_DIR / "evaluation_results.csv"
+    parts = []
+    for label, subset in [
+        ("filter", ev_df[ev_df["query_type"] == "filter"]),
+        ("extract", ev_df[ev_df["query_type"] == "extract"]),
+        ("all", ev_df),
+    ]:
+        agg = subset.groupby(gcols)[mcols].mean().round(4).reset_index()
+        agg.insert(len(gcols), "query_type", label)
+        parts.append(agg)
+    import pandas as pd
 
-    if ok.empty:
-        print("没有 error 为空的行；请检查 Step 7 输出或 runs 中的 error 列。")
-        display(runs.head(10))
-    else:
-        ok["correct"] = ok.apply(lambda r: is_correct(r["pred_label"], r["gold"]), axis=1)
-        summary = ok.groupby(["query_type", "config", "compression_ratio"]).agg(
-            accuracy=("correct", "mean"),
-            latency_ms=("latency_ms", "mean"),
-        ).reset_index()
-        display(summary)
-
-        for qt in summary["query_type"].unique():
-            subset = summary[summary["query_type"] == qt]
-            plt.figure(figsize=(10, 5))
-            for cfg in subset["config"].unique():
-                d = subset[subset["config"] == cfg].sort_values("compression_ratio")
-                plt.plot(d["compression_ratio"], d["accuracy"], marker="o", label=cfg)
-            plt.title(f"Accuracy vs Ratio ({qt})")
-            plt.xlabel("Compression Ratio")
-            plt.ylabel("Accuracy")
-            plt.legend()
-            plt.grid(True)
-            plt.show()
+    summary = pd.concat(parts, ignore_index=True).sort_values(gcols + ["query_type"])
+    summary.to_csv(summ_path, index=False)
+    print("Saved summary:", summ_path.resolve())
 """
-        )
+        ),
     ]
 
     nb = {
-        "nbformat": 4, "nbformat_minor": 5,
+        "nbformat": 4,
+        "nbformat_minor": 5,
         "metadata": {"kernelspec": {"display_name": "Python 3", "name": "python3"}},
         "cells": cells,
     }

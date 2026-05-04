@@ -1,0 +1,23 @@
+Query ID to Query Name Mapping
+================================================================================
+
+query_000: {artworks.image} depicts Madonna and Child
+query_001: {artworks.image} depicts more than two people
+query_002: {artworks.image} depicts more than three people
+query_003: {artworks.image} depicts saints identifiable by their halos
+query_004: {artworks.image} depicts a scene in which death is a dominant theme
+query_005: {artworks.image} depicts a religous scene
+query_006: {artworks.image} shows a still life
+query_007: {artworks.image} a scene of war
+query_008: {artworks.image} depicts an angel with wings
+query_009: {artworks.image} depicts a crucifixion scene
+query_028: Extract the number of people [num_people] depicted in {artworks.image}
+query_030: Extract the primary background color [background] of each artwork in {artworks.image}. Choose from Red, Blue, Yellow, Green, Orange, Purple, Black, White.
+query_031: Extract the number of saints with halos [saints_with_halos] from {artworks.image}.
+query_032: Extract the number of animals [num_animals] from {artworks.image}
+query_034: Extract the [gender] of the main character (male / female / undefined) from {artworks.image}
+query_042: Extract the type of setting [setting_type] of {artworks.image} (interior / exterior / undefined)
+query_043: Extract the dominant material [dominant_material] depicted (stone / wood / metal / fabric / undefined) from {artworks.image}
+query_047: Extract the approximate lighting type [lighting] in {artworks.image} (natural / candle / undefined)
+query_048: Extract the level of movement [movement_level] in {artworks.image} (static / moderate / dynamic)
+query_049: Extract the landscape type [landscape_type] depicted in {artworks.image} (mountain / forest / sea / plain / undefined)
