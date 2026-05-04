@@ -49,12 +49,14 @@ Vision-Language Model benchmark on the paintings dataset.
         md(
             """### Step 1 — Install dependencies
 
-PyPI only (`transformers>=5` matches **kvpress**). After other wheels, **reinstall Pillow** so `ImageFont` / `_typing` match. Before importing `transformers`, cached `PIL.*` modules are dropped (Colab often keeps a stale mix in `sys.modules`). If errors persist: **Runtime → Restart session**, then Step 1 → Step 3.
+PyPI only (`transformers>=5` matches **kvpress**). **Pillow** is pinned and reinstalled after a **double `pip uninstall`**: Colab often leaves an old `_imaging` binary (e.g. 10.2) while `pip --force-reinstall "Pillow>=11"` upgrades only Python files to 12.x, which triggers “Core version vs Pillow version” errors. Before `import transformers`, `PIL.*` is evicted from `sys.modules`. If anything still looks stuck: **Runtime → Restart session**, then Step 1 → Step 3.
 """
         ),
         code(
-            """!pip install -q -U "transformers>=5.0" accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress pillow
-!pip install -q --force-reinstall "Pillow>=11.0.0"
+            """!pip install -q -U "transformers>=5.0" accelerate bitsandbytes pandas scikit-learn matplotlib tqdm kvpress
+!pip uninstall -y Pillow pillow
+!pip uninstall -y Pillow pillow
+!pip install -q --no-cache-dir "Pillow==11.2.1"
 import sys
 for _k in list(sys.modules):
     if _k == "PIL" or _k.startswith("PIL."):
@@ -114,13 +116,15 @@ print("IMAGES_DIR  :", IMAGES_DIR.resolve())
 
 Straight `LlavaNext*` load only (no `AutoModel` fallback — it hits the same CLIP stack). Set `LOAD_IN_8BIT = True` after the stack works.
 
-Starts with a small **Pillow self-check** (clear `sys.modules` + reinstall if `StrOrBytesPath` is missing) so this cell still works if you re-ran it after an older import.
+Starts with a **Pillow self-check**: if `PIL.Image` fails (missing `StrOrBytesPath`, or `_imaging` core vs package mismatch), we `pip uninstall` twice and install **`Pillow==11.2.1`** with `--no-cache-dir`, then clear `sys.modules`.
 """
         ),
         code(
             """\
 import subprocess
 import sys
+
+_PILLOW_PIN = "Pillow==11.2.1"
 
 
 def _purge_pil_modules():
@@ -129,28 +133,41 @@ def _purge_pil_modules():
             del sys.modules[k]
 
 
-def _ensure_pillow_typing():
+def _ensure_pillow_binary_matches():
+    # Colab: avoid Pillow 12.x Python + stale _imaging from 10.x after broken force-reinstall.
     _purge_pil_modules()
     try:
-        from PIL._typing import StrOrBytesPath  # noqa: F401
+        from PIL import Image  # noqa: F401
+
         return
     except ImportError:
-        subprocess.check_call(
-            [
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "-q",
-                "--force-reinstall",
-                "Pillow>=11.0.0",
-            ],
-        )
-        _purge_pil_modules()
-        from PIL._typing import StrOrBytesPath  # noqa: F401
+        pass
+    subprocess.run(
+        [sys.executable, "-m", "pip", "uninstall", "-y", "Pillow", "pillow"],
+        check=False,
+        capture_output=True,
+    )
+    subprocess.run(
+        [sys.executable, "-m", "pip", "uninstall", "-y", "Pillow", "pillow"],
+        check=False,
+        capture_output=True,
+    )
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            "--no-cache-dir",
+            _PILLOW_PIN,
+        ],
+    )
+    _purge_pil_modules()
+    from PIL import Image  # noqa: F401
 
 
-_ensure_pillow_typing()
+_ensure_pillow_binary_matches()
 
 import torch
 import transformers
