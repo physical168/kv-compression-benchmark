@@ -176,9 +176,14 @@ print("IMAGES_DIR  :", IMAGES_DIR.resolve())
         md(
             """### Step 3 — Load model
 
-Straight `LlavaNext*` load only (no `AutoModel` fallback). Set `LOAD_IN_8BIT = True` after everything works.
+Straight `LlavaNext*` load only (no `AutoModel` fallback). 默认已开 `LOAD_IN_8BIT` 以降低 Colab OOM 概率。
 
-> **Prerequisite**: Step 1 has run once (kernel restarted or Step 1 printed “已做过”). Then run Step 2 before this cell.
+> **Prerequisite**: Step 1 has run once (kernel restarted or Step 1 printed “已做过”). Then run **Step 2** before this cell.
+> **If the runtime restarts after this cell** (OOM / Colab disconnect): next time run **Step 2 → Step 3 → Step 4** in order — `RUN_DIR` and `model` are gone after restart.
+
+若本格跑完后**会话重启**：下次必须从 **Step 2** 开始（再 Step 3、Step 4），否则会出现 `RUN_DIR` / `model` 未定义。
+
+> **已经打印 `Model ready` 却仍立刻崩溃？** 多半是 **显存/内存峰值（OOM）** 或 Colab 断连，不是步骤顺序错了。下次照样要从 Step 2 重跑。可先把下面 **`LOAD_IN_8BIT = True`**（省显存），或换 **高 RAM / 更大 GPU** 的运行时。
 """
         ),
         code(
@@ -191,8 +196,8 @@ print("transformers:", transformers.__version__)
 print("imported from:", transformers.__file__)
 
 MODEL_ID = "llava-hf/llama3-llava-next-8b-hf"
-# False while debugging env; True uses bitsandbytes 8-bit weights
-LOAD_IN_8BIT = False
+# Colab free T4: True 可明显降低显存峰值（推荐）；本地调试可改 False
+LOAD_IN_8BIT = True
 
 dtype = (
     torch.bfloat16
@@ -215,7 +220,14 @@ print("Model ready:", MODEL_ID)
         ),
 
         # ── Step 4 ──────────────────────────────────────────────────────────
-        md("### Step 4 — Configuration"),
+        md(
+            """### Step 4 — Configuration
+
+**Any kernel restart** clears all variables. `RUN_DIR` / `DATASET_PATH` / `IMAGES_DIR` are created in **Step 2**; the model lives in **Step 3**. After a crash or manual restart, run **Step 2 → Step 3 → Step 4** in order (do not start from Step 4 alone).
+
+内核一旦重启，内存里的变量会清空。`RUN_DIR` 等在 **Step 2** 定义，模型在 **Step 3** 加载。会话崩溃或手动重启后，请按 **Step 2 → Step 3 → Step 4** 顺序执行，不要单独从 Step 4 开始。
+"""
+        ),
         code(
             """\
 from __future__ import annotations
@@ -223,6 +235,12 @@ import csv, gc, os, re, time
 from urllib.parse import unquote
 import pandas as pd
 from PIL import Image
+
+if "RUN_DIR" not in globals():
+    raise RuntimeError(
+        "RUN_DIR 未定义：当前内核里还没跑过 Step 2，或刚发生过重启导致变量清空。"
+        "请先运行 Step 2，再运行 Step 3（如需模型），最后运行本格。"
+    )
 
 MAX_ROWS             = 2
 MAX_NEW_TOKENS       = 40
