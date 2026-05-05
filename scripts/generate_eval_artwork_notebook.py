@@ -438,12 +438,16 @@ def save_results_ce_style(df: pd.DataFrame, base_dir: Path, dataset: str, model_
 """
         ),
         md(
-            """### Step 5 — 读 image_queries.yaml、构建记录与问句
+            """### Step 5 — 构建记录与问句（问句与评测 YAML **完全一致**）
 
-`record_id` 与 **CompressionExperiments** 的 `load_dataset` 一致：当前 `paintings.csv` 行序下的
-**从 0 开始的行号**（与 `ground_truth/query_*.csv` 的 `_index_artworks` 对齐）。
+**Filter / Extract 的问句字符串**从 **`evaluation_config.yaml`** 的 `artwork.filter_query_mapping` /
+`extract_query_mapping` 读取（与 Step 8 `EvaluationManager` 匹配用的键相同），避免与
+`image_queries.yaml` 手写不一致导致「评测 0 行」。
 
-图片路径：先试 URL 解码文件名，再试原始 `%20` 字面名（Drive 上常见）。
+`record_id` 与 **CompressionExperiments** 的 `load_dataset` 一致：`paintings.csv` 行序下 **0…N-1**
+（与 `ground_truth/query_*.csv` 的 `_index_artworks` 对齐）。
+
+列名 `image_url` 等仍从 **`image_queries.yaml`** 读取。图片路径：先试 URL 解码文件名，再试 `%20` 字面名。
 """
         ),
         code(
@@ -456,12 +460,14 @@ _PRESS_REGISTRY = {
     "FinchPress": FinchPress,
 }
 
+with open(EVAL_CONFIG_YAML, encoding="utf-8") as f:
+    _ev = yaml.safe_load(f)["artwork"]
+filter_queries = list(_ev["filter_query_mapping"].keys())
+extract_queries = list(_ev["extract_query_mapping"].keys())
+
 with open(IMAGE_QUERIES_YAML, encoding="utf-8") as f:
-    _y = yaml.safe_load(f)
-art_cfg = _y["artwork"]
-filter_queries = list(art_cfg["filter_queries"])
-extract_queries = list(art_cfg["extract_queries"])
-image_url_column = art_cfg.get("image_url_column", "image_url")
+    _y = yaml.safe_load(f)["artwork"]
+image_url_column = _y.get("image_url_column", "image_url")
 
 df = pd.read_csv(DATASET_PATH)
 df = df[df[image_url_column].notna()].copy().reset_index(drop=True)
@@ -579,7 +585,7 @@ for _, row in df.iterrows():
                     rows_all.append(
                         {
                             "record_id": rid,
-                            "query": qtext,
+                            "query": str(qtext).strip(),
                             "press": pname,
                             "ratio": float(ratio),
                             "answer": ans,
@@ -611,10 +617,30 @@ query 文本与 **`ground_truth/query_*.csv`**。
         ),
         code(
             """\
+import os
 import sys
+from pathlib import Path
+
+import pandas as pd
 
 if "RESULTS_ROOT" not in globals():
     raise RuntimeError("请先运行 Step 4 与 Step 7。")
+
+# —— 诊断：空结果时看这里 ——
+print("RESULTS_ROOT =", str(RESULTS_ROOT), "| exists:", os.path.isdir(RESULTS_ROOT))
+_rroot = Path(RESULTS_ROOT)
+_csvs = sorted(_rroot.rglob("results.csv")) if _rroot.is_dir() else []
+print("results.csv 文件数:", len(_csvs))
+for _p in _csvs[:5]:
+    print(" ", _p)
+    print("   路径末 5 段 (应为 .../artwork/<model>/<press>/<ratio>/results.csv):", _p.parts[-5:])
+if _csvs:
+    _s0 = pd.read_csv(_csvs[0])
+    print("示例 CSV 列名:", list(_s0.columns), "行数:", len(_s0))
+    if "query" in _s0.columns:
+        print("示例 query 前 2 个:", _s0["query"].astype(str).head(2).tolist())
+else:
+    print("未找到任何 results.csv：请确认 Step 7 已运行且 save_results_ce_style 已执行。")
 
 _ae = REPO_DIR / "benchmarks" / "artwork_eval"
 sys.path.insert(0, str(_ae))
@@ -626,7 +652,10 @@ mgr = EvaluationManager(
 )
 ev_df = mgr.evaluate_all()
 if ev_df.empty:
-    print("未得到任何评测行：确认 Step 7 已生成 results/artwork/.../results.csv，且 query 字符串与 yaml 完全一致。")
+    print(
+        "未得到任何评测行。常见原因：① Step 7 未写出 CSV；② RESULTS_ROOT 不对；③ 路径深度不对（需要 …/results/artwork/<model>/<press>/<ratio>/results.csv）；"
+        "④ 旧 runs 的 query 列与 evaluation_config 不一致（请用当前笔记本 Step 5 重跑 Step 7）。"
+    )
 else:
     display(ev_df.head(20))
     gcols = ["dataset", "model_tag", "press", "ratio"]

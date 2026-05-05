@@ -153,6 +153,11 @@ class EvaluationManager:
         dataset_cfg = self.cfg[dataset]
         gt_dir = _ARTWORK_EVAL_ROOT / dataset_cfg["gt_dir"]
 
+        if "query" not in results.columns:
+            logger.warning("No 'query' column in %s", csv_path)
+            return []
+        qnorm = results["query"].astype(str).str.strip()
+
         typed_queries: list[tuple[str, str, str]] = []
         for query_text, query_id in dataset_cfg.get("filter_query_mapping", {}).items():
             typed_queries.append((query_text, query_id, "filter"))
@@ -161,7 +166,8 @@ class EvaluationManager:
 
         rows = []
         for query_text, query_id, q_type in typed_queries:
-            subset = results[results["query"] == query_text]
+            qt = str(query_text).strip()
+            subset = results[qnorm == qt]
             if subset.empty:
                 logger.debug("Query '%s' not found in %s.", query_text, csv_path)
                 continue
