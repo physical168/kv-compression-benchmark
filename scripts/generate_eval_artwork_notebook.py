@@ -52,6 +52,8 @@ shape as `engine.py` (`run_single`, image modality), and the same **results layo
 
 **Dataset**: `datasets/artwork/paintings.csv` · **Images**: `datasets/artwork/images/`  
 **Config copy**: `benchmarks/artwork_eval/configs/image_queries.yaml`
+
+**Colab 从 GitHub 打开**：代码不在虚拟机里，请先 **Step 1b** 把仓库 clone 到 `/content/kv-compression-benchmark`（或把完整仓库放到 Drive 的 `kv-compression-benchmark/`）。
 """
         ),
         md(
@@ -59,7 +61,7 @@ shape as `engine.py` (`run_single`, image modality), and the same **results layo
 
 Colab 里旧的 Pillow C 扩展 `_imaging.so` 会留在**当前 Python 进程**里，光 `pip` 重装不够，需要**重启内核**后才会加载新编译的扩展。
 
-- 本格末尾会**请求重启内核**（不是机器坏了）。Colab 有时用「会话崩溃 / 不明原因」提示，**可以忽略**；重启完成后请从 **Step 2** 继续。
+- 本格末尾会**请求重启内核**（不是机器坏了）。Colab 有时用「会话崩溃 / 不明原因」提示，**可以忽略**；重启完成后请从 **Step 1b**（Colab `git clone`）→ **Step 2** 继续。
 - **不要反复运行 Step 1**：否则会一次次重启。若已装过，本格会自动跳过。
 - 若要强制重装：在 Colab 里删掉文件 `/content/.eval_artwork_llava_step1_done` 后再运行本格。
 """
@@ -137,7 +139,72 @@ else:
     except Exception:
         os.kill(os.getpid(), 9)"""
         ),
-        md("### Step 2 — Mount Google Drive & set paths"),
+        md(
+            """### Step 1b —（Colab）`git clone` 仓库
+
+从 GitHub 打开笔记本时，虚拟机里**没有** `benchmarks/artwork_eval/`。**在 Colab 上请先运行本格**（装依赖、若 Step 1 已重启内核，则从本格继续）。
+
+- 会把仓库拉到 **`/content/kv-compression-benchmark`**（浅克隆）。
+- 若目录已存在且缺文件，会尝试 **`git pull`**；仍失败再报错。
+- **本机 / 非 Colab**：本格会跳过，不影响后面 Step 2 使用当前目录。
+
+> 顺序：**Step 1**（或已跳过）→ **Step 1b** → **Step 2** → …
+"""
+        ),
+        code(
+            """\
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_URL = "https://github.com/physical168/kv-compression-benchmark.git"
+CLONE_DIR = Path("/content/kv-compression-benchmark")
+_PATCH = CLONE_DIR / "benchmarks" / "artwork_eval" / "llava_kvpress_patch.py"
+
+if not Path("/content").is_dir():
+    print("Step 1b: 非 Colab 环境，跳过 git clone。")
+elif _PATCH.is_file():
+    print("Step 1b: 已存在补丁文件，跳过:", _PATCH)
+elif CLONE_DIR.is_dir():
+    print("Step 1b: 目录已存在，尝试 git pull …")
+    r = subprocess.run(
+        ["git", "-C", str(CLONE_DIR), "pull", "--ff-only"],
+        capture_output=True,
+        text=True,
+    )
+    print(r.stdout or "", r.stderr or "", sep="")
+    if not _PATCH.is_file():
+        print(
+            "Step 1b: pull 后仍缺少补丁，请删除后重试 clone：",
+            CLONE_DIR,
+            file=sys.stderr,
+        )
+        raise FileNotFoundError(str(_PATCH))
+else:
+    print("Step 1b: git clone（浅克隆）…")
+    subprocess.check_call(
+        ["git", "clone", "--depth", "1", REPO_URL, str(CLONE_DIR)]
+    )
+    if not _PATCH.is_file():
+        raise FileNotFoundError(f"clone 完成但仍缺少: {_PATCH}")
+
+print("Step 1b OK:", CLONE_DIR if Path("/content").is_dir() else "skipped")
+"""
+        ),
+        md(
+            """### Step 2 — Mount Google Drive & set paths
+
+**`REPO_DIR` 解析**：在 Colab 上会依次查找 **`benchmarks/artwork_eval/llava_kvpress_patch.py`**  
+① `Google Drive/kv-compression-benchmark/`（若你已同步完整仓库）  
+② **`/content/kv-compression-benchmark/`**（Step 1b 克隆）  
+若两处都没有补丁文件，会**告警**并选用可用路径（请确保至少完成 Step 1b 或 Drive 同步）。
+
+**`RUN_DIR`**：默认仍把运行结果写到 Drive 的 `kv-compression-benchmark/artwork_eval_runs/`（若已挂载）；否则写到 `/content/artwork_eval_workspace/`。
+"""
+        ),
         code(
             """\
 from pathlib import Path
@@ -147,6 +214,8 @@ RUN_ON_COLAB = os.path.isdir("/content")
 USE_GOOGLE_DRIVE = True
 DRIVE_SUBDIR = "kv-compression-benchmark/artwork_eval_runs"
 
+PATCH_REL = Path("benchmarks/artwork_eval/llava_kvpress_patch.py")
+
 if RUN_ON_COLAB and USE_GOOGLE_DRIVE:
     try:
         from google.colab import drive
@@ -155,14 +224,29 @@ if RUN_ON_COLAB and USE_GOOGLE_DRIVE:
         USE_GOOGLE_DRIVE = False
         print("google.colab not found; falling back to local paths.")
 
+_drive_repo = Path("/content/drive/MyDrive/kv-compression-benchmark")
+_clone_repo = Path("/content/kv-compression-benchmark")
+
 if RUN_ON_COLAB and USE_GOOGLE_DRIVE and Path("/content/drive/MyDrive").is_dir():
-    RUN_DIR  = Path("/content/drive/MyDrive") / DRIVE_SUBDIR
-    REPO_DIR = Path("/content/drive/MyDrive/kv-compression-benchmark")
+    RUN_DIR = Path("/content/drive/MyDrive") / DRIVE_SUBDIR
 elif RUN_ON_COLAB:
-    RUN_DIR  = Path("/content/artwork_eval_workspace")
-    REPO_DIR = Path("/content")
+    RUN_DIR = Path("/content/artwork_eval_workspace")
 else:
-    RUN_DIR  = Path("artwork_eval_output")
+    RUN_DIR = Path("artwork_eval_output")
+
+REPO_DIR: Path
+if RUN_ON_COLAB:
+    if (_drive_repo / PATCH_REL).is_file():
+        REPO_DIR = _drive_repo
+    elif (_clone_repo / PATCH_REL).is_file():
+        REPO_DIR = _clone_repo
+    else:
+        REPO_DIR = _drive_repo if _drive_repo.is_dir() else _clone_repo if _clone_repo.is_dir() else Path("/content")
+        print(
+            "WARN: 未找到", PATCH_REL, "— 请先运行 Step 1b，或将完整仓库放到",
+            _drive_repo,
+        )
+else:
     REPO_DIR = Path(".")
 
 RUN_DIR.mkdir(parents=True, exist_ok=True)
@@ -190,8 +274,8 @@ print("IMAGES_DIR         :", IMAGES_DIR.resolve())
 `DynamicCache` / `BasePress.forward_hook` / `language_model` 等补丁，便于 **ExpectedAttention**、
 **KVzip**、**Finch** 在 transformers 5.x 下工作。
 
-> **Prerequisite**: Step 1 完成（必要时重启内核）→ **Step 2** → 本格。  
-> 若 OOM 或断连重启：下次 **Step 2 → Step 3 → Step 4**。
+> **Prerequisite**: Step 1（或已跳过）→ **Step 1b（Colab clone）**→ **Step 2** → 本格。  
+> 若 OOM 或断连重启：下次 **Step 2 → Step 3 → Step 4**（Colab 勿忘 **Step 1b** 若 `/content` 已清空）。
 """
         ),
         code(
@@ -234,11 +318,24 @@ model = LlavaNextForConditionalGeneration.from_pretrained(
     quantization_config=quantization_config,
 )
 
-_art_eval = REPO_DIR / "benchmarks" / "artwork_eval"
-sys.path.insert(0, str(_art_eval))
-from llava_kvpress_patch import apply_kvpress_compatibility_patches
+import importlib.util
 
-apply_kvpress_compatibility_patches(model)
+_art_eval = REPO_DIR / "benchmarks" / "artwork_eval"
+_patch_py = _art_eval / "llava_kvpress_patch.py"
+if not _patch_py.is_file():
+    raise FileNotFoundError(
+        f"找不到补丁文件: {_patch_py.resolve()}\n"
+        "Colab 需要本机有完整仓库目录 benchmarks/artwork_eval（内含 llava_kvpress_patch.py）。\n"
+        "任选其一：① Drive 上同步 GitHub 仓库到 kv-compression-benchmark/；② 新开单元格运行：\n"
+        "  !git clone --depth 1 https://github.com/physical168/kv-compression-benchmark.git /content/kv-compression-benchmark\n"
+        '然后把 Step 2 里 REPO_DIR = Path("/content/kv-compression-benchmark")，再重跑 Step 2→3。'
+    )
+_spec = importlib.util.spec_from_file_location("llava_kvpress_patch", _patch_py)
+_llava_patch = importlib.util.module_from_spec(_spec)
+sys.modules["llava_kvpress_patch"] = _llava_patch
+assert _spec.loader is not None
+_spec.loader.exec_module(_llava_patch)
+_llava_patch.apply_kvpress_compatibility_patches(model)
 print("Model ready + kvpress patches:", MODEL_ID, "| MODEL_TAG:", MODEL_TAG)
 """
         ),

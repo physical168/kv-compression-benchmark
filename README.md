@@ -56,7 +56,7 @@ You need a Hugging Face account and token to access Meta Llama models used in th
 13. **Notebook generators**:
    - v2: `python scripts/generate_eval_extract_notebook.py`
    - v3: `python scripts/generate_eval_extract_notebook_v3.py`
-14. **`eval_artwork_llava.ipynb`**: Llama 3–based **LLaVA-Next** on **`datasets/artwork/`**, aligned with [CompressionExperiments](https://github.com/GabrieleSanmartino/CompressionExperiments): same **`image_queries.yaml` strings**, same **user prompt** pattern as `engine.py` (image filter `1`/`0`, extract suffix), same **results tree** `results/artwork/{model_tag}/{PressClass}/{ratio}/results.csv` (`record_id`, `query`, `press`, `ratio`, `answer`), and **P/R/F1** via bundled **`benchmarks/artwork_eval/`** (`evaluation/evaluator.py`, `evaluation/evaluation_config.yaml`, `ground_truth/query_*.csv`, `llava_kvpress_patch.py`). Regenerate the notebook: `python scripts/generate_eval_artwork_notebook.py`. Offline eval only: `python benchmarks/artwork_eval/evaluate.py --results-dir <RUN_DIR>/results`.
+14. **`eval_artwork_llava.ipynb`**: Llama 3–based **LLaVA-Next** on **`datasets/artwork/`**, aligned with [CompressionExperiments](https://github.com/GabrieleSanmartino/CompressionExperiments): same **`image_queries.yaml` strings**, same **user prompt** pattern as `engine.py` (image filter `1`/`0`, extract suffix), same **results tree** `results/artwork/{model_tag}/{PressClass}/{ratio}/results.csv` (`record_id`, `query`, `press`, `ratio`, `answer`), and **P/R/F1** via bundled **`benchmarks/artwork_eval/`** (`evaluation/evaluator.py`, `evaluation/evaluation_config.yaml`, `ground_truth/query_*.csv`, `llava_kvpress_patch.py`). On **Colab**, run **Step 1b** to `git clone` the repo into `/content/kv-compression-benchmark` (or sync the full tree to Drive). Regenerate: `python scripts/generate_eval_artwork_notebook.py`. Offline eval: `python benchmarks/artwork_eval/evaluate.py --results-dir <RUN_DIR>/results`.
 
 ### Reference: CompressionExperiments (course-line framework)
 
@@ -65,6 +65,14 @@ You need a Hugging Face account and token to access Meta Llama models used in th
 **Windows:** some `datasets/artwork/images/*` paths exceed legacy `MAX_PATH`; run `git config --global core.longpaths true` before clone/checkout, or clone to a short path.
 
 This repo mirrors the artwork slice under **`benchmarks/artwork_eval/`** so `eval_artwork_llava` can match CE CSVs and metrics without cloning the full upstream tree.
+
+**Colab + Google Drive (`eval_artwork_llava.ipynb`):**
+
+- **Easiest (no Drive copy of code):** run **Step 1b** in the notebook — it **`git clone`**s this repo to **`/content/kv-compression-benchmark`**. Step 2 then picks that tree when `benchmarks/artwork_eval/llava_kvpress_patch.py` is present.
+- **Alternatively**, put a full copy of this repo at **`Google Drive/kv-compression-benchmark/`** (same layout as GitHub: `benchmarks/`, `datasets/`, `scripts/`, notebooks, etc.) — Step 2 prefers this path if the patch file exists there.
+- Add **painting image files** under **`Google Drive/kv-compression-benchmark/datasets/artwork/images/`** — file names must match the tail of each `image_url` in `datasets/artwork/paintings.csv` (the notebook tries both URL-decoded names and raw `%20` literals).
+- By default, **runs + `results/`** are written under **`Google Drive/kv-compression-benchmark/artwork_eval_runs/`** (see `DRIVE_SUBDIR` in Step 2).
+- **Hugging Face:** the artwork notebook does **not** include a dedicated login cell. [`llava-hf/llama3-llava-next-8b-hf`](https://huggingface.co/llava-hf/llama3-llava-next-8b-hf) is normally downloadable without gating; if `from_pretrained` fails with an auth error, run `huggingface_hub.login()` before Step 3 or add a Colab secret **`HF_TOKEN`** from [Hugging Face → Settings → Tokens](https://huggingface.co/settings/tokens).
 
 ## Features
 
