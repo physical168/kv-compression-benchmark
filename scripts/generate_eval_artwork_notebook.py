@@ -323,15 +323,15 @@ import importlib.util
 _art_eval = REPO_DIR / "benchmarks" / "artwork_eval"
 _patch_py = _art_eval / "llava_kvpress_patch.py"
 if not _patch_py.is_file():
-    # 单条 str 拼接，避免多行 f-string 写入 ipynb 后在部分环境报 SyntaxError
-    _p = str(_patch_py.resolve())
+    # 不要用引号内的 \\n（notebook 按行存储时会把模板从字面换行处切断，导致 SyntaxError）
+    _nl = chr(10)
     raise FileNotFoundError(
         "找不到补丁文件: "
-        + _p
-        + "\nColab 需要本机有完整仓库目录 benchmarks/artwork_eval（内含 llava_kvpress_patch.py）。\n"
-        "任选其一：① Drive 上同步 GitHub 仓库到 kv-compression-benchmark/；② 运行 Step 1b 或：\n"
-        "  !git clone --depth 1 https://github.com/physical168/kv-compression-benchmark.git /content/kv-compression-benchmark\n"
-        "然后在 Step 2 将 REPO_DIR 指到 /content/kv-compression-benchmark 或 Drive 上同结构目录，再重跑 Step 2→3。"
+        + str(_patch_py.resolve())
+        + _nl
+        + "Colab 需要 benchmarks/artwork_eval/llava_kvpress_patch.py。"
+        + _nl
+        + "请运行 Step 1b，或将仓库放到 Drive/kv-compression-benchmark（或 /content/kv-compression-benchmark）。"
     )
 _spec = importlib.util.spec_from_file_location("llava_kvpress_patch", _patch_py)
 _llava_patch = importlib.util.module_from_spec(_spec)
@@ -407,7 +407,7 @@ def build_answer_prefix(question: str, is_boolean: bool) -> str:
             " Do not add any other comments."
         )
         formatted_question = question + _IMAGE_EXTRACT_SUFFIX
-    return f"{instruction} {formatted_question}\nAnswer: "
+    return f"{instruction} {formatted_question}" + chr(10) + "Answer: "
 
 
 def save_results_ce_style(df: pd.DataFrame, base_dir: Path, dataset: str, model_tag: str) -> None:
