@@ -1,14 +1,11 @@
-"""Generate eval_artwork_llava.ipynb aligned with CompressionExperiments artwork flow.
+"""Generate eval_artwork_llava.ipynb for the artwork benchmark.
 
-- Queries: benchmarks/artwork_eval/configs/image_queries.yaml (same strings as CE).
-- Prompts: same answer_prefix pattern as experiment_manager/src/engine.py (image filter 1/0,
-  image extract + suffix).
-- Outputs: results/{dataset}/{model_tag}/{press}/{ratio}/results.csv with columns
-  record_id, query, press, ratio, answer.
-- Step 8: EvaluationManager + P/R/F1 (evaluation_config.yaml + ground_truth/).
-
-Run from repo root:
-    python scripts/generate_eval_artwork_notebook.py
+Notebook goals:
+- Fully English content (markdown + user-facing messages)
+- Query strings aligned with evaluation_config.yaml
+- CE-style output tree: results/{dataset}/{model_tag}/{press}/{ratio}/results.csv
+- CE-style evaluator (P/R/F1)
+- kvpress installed from CompressionExperiments repository
 """
 
 from __future__ import annotations
@@ -18,12 +15,7 @@ from pathlib import Path
 
 
 def _cell_source(text: str) -> list[str]:
-    """Single multiline string per cell.
-
-    Do NOT use splitlines(): escaped ``\\n`` inside quotes can become real newlines in the
-    template string and split the *logical* Python line, producing invalid syntax in ipynb
-    (see Colab ``SyntaxError: unterminated string literal`` on ``+ \"`` fragments).
-    """
+    """Store each cell source as one string to avoid split-line issues."""
     if not text.endswith("\n"):
         text += "\n"
     return [text]
@@ -50,36 +42,31 @@ OUT = ROOT / "eval_artwork_llava.ipynb"
 def main() -> None:
     cells = [
         md(
-            """# Artwork Evaluation (Llava) — aligned with CompressionExperiments
+            """# Artwork Evaluation (Llava) — CE-aligned
 
-Vision-language benchmark on **paintings** using the same **queries** as
-`CompressionExperiments/experiment_manager/configs/image_queries.yaml`, the same **user prompt**
-shape as `engine.py` (`run_single`, image modality), and the same **results layout** as
-`src/utils.py` / `evaluate.py`:
+This notebook runs the artwork benchmark with:
+- query strings aligned to `benchmarks/artwork_eval/evaluation/evaluation_config.yaml`
+- CE-compatible result layout
+- CE evaluator (precision / recall / F1)
+- `kvpress` installed from
+  `https://github.com/GabrieleSanmartino/CompressionExperiments.git`
 
-- **Results**: `RUN_DIR/results/artwork/{model_tag}/{PressClass}/{ratio:.2f}/results.csv`
-- **Columns**: `record_id`, `query`, `press`, `ratio`, `answer`
-- **Metrics (Step 8)**: `benchmarks/artwork_eval/evaluation/EvaluationManager` → P/R/F1 vs
-  `benchmarks/artwork_eval/ground_truth/query_*.csv`
-
-**Dataset**: `datasets/artwork/paintings.csv` · **Images**: `datasets/artwork/images/`  
-**Config copy**: `benchmarks/artwork_eval/configs/image_queries.yaml`
-
-**Colab 从 GitHub 打开**：代码不在虚拟机里，请先 **Step 1b** 把仓库 clone 到 `/content/kv-compression-benchmark`（或把完整仓库放到 Drive 的 `kv-compression-benchmark/`）。
+Dataset: `datasets/artwork/paintings.csv`  
+Images: `datasets/artwork/images/`
 """
         ),
         md(
-            """### Step 1 — Install dependencies（本格一般只跑一次）
+            """### Step 1 — Install dependencies (run once)
 
-Colab 里旧的 Pillow C 扩展 `_imaging.so` 会留在**当前 Python 进程**里，光 `pip` 重装不够，需要**重启内核**后才会加载新编译的扩展。
+This cell installs Python dependencies and recompiles Pillow from source
+(recommended for stable image handling on Colab).
 
-- 本格末尾会**请求重启内核**（不是机器坏了）。Colab 有时用「会话崩溃 / 不明原因」提示，**可以忽略**；重启完成后请从 **Step 1b**（Colab `git clone`）→ **Step 2** 继续。
-- **不要反复运行 Step 1**：否则会一次次重启。若已装过，本格会自动跳过。
-- 若要强制重装：在 Colab 里删掉文件 `/content/.eval_artwork_llava_step1_done` 后再运行本格。
+After installation, the cell requests a kernel restart.  
+When the runtime is back, continue with **Step 1b**.
 """
         ),
         code(
-            """# One-time install + optional kernel restart (see Step 1 markdown above).
+            """# One-time install + optional kernel restart
 from __future__ import annotations
 
 import os
@@ -102,8 +89,8 @@ def _pil_import_ok() -> bool:
 
 
 if _MARK.is_file() and _pil_import_ok():
-    print("Step 1 已做过：标记存在且 Pillow 可导入。请直接从 Step 2 继续。")
-    print("若要强制重装依赖，请先删除:", _MARK.resolve())
+    print("Step 1 already completed. Continue with Step 1b.")
+    print("To force reinstall, delete:", _MARK.resolve())
 else:
     subprocess.check_call(
         [
@@ -121,7 +108,6 @@ else:
             "scikit-learn",
             "matplotlib",
             "tqdm",
-            "kvpress",
         ]
     )
     subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y", "Pillow", "pillow"])
@@ -138,8 +124,7 @@ else:
         ]
     )
     _MARK.write_text("ok", encoding="utf-8")
-    print("依赖与 Pillow(源码编译)已装好。正在请求**重启内核**…")
-    print("（Colab 若弹出「会话崩溃」多为误报；重启后请从 Step 2 继续，勿重复跑本格。）")
+    print("Dependencies installed. Requesting kernel restart...")
     try:
         from IPython import get_ipython
 
@@ -152,15 +137,12 @@ else:
         os.kill(os.getpid(), 9)"""
         ),
         md(
-            """### Step 1b —（Colab）`git clone` 仓库
+            """### Step 1b — Clone repositories on Colab
 
-从 GitHub 打开笔记本时，虚拟机里**没有** `benchmarks/artwork_eval/`。**在 Colab 上请先运行本格**（装依赖、若 Step 1 已重启内核，则从本格继续）。
-
-- 会把仓库拉到 **`/content/kv-compression-benchmark`**（浅克隆）。
-- 若目录已存在且缺文件，会尝试 **`git pull`**；仍失败再报错。
-- **本机 / 非 Colab**：本格会跳过，不影响后面 Step 2 使用当前目录。
-
-> 顺序：**Step 1**（或已跳过）→ **Step 1b** → **Step 2** → …
+This cell does two things:
+1) Clones this benchmark repo to `/content/kv-compression-benchmark` (if needed)
+2) Clones `CompressionExperiments` and installs `kvpress` from that repo:
+   `/content/CompressionExperiments/kvpress`
 """
         ),
         code(
@@ -172,49 +154,48 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_URL = "https://github.com/physical168/kv-compression-benchmark.git"
-CLONE_DIR = Path("/content/kv-compression-benchmark")
-_PATCH = CLONE_DIR / "benchmarks" / "artwork_eval" / "llava_kvpress_patch.py"
+BENCH_REPO_URL = "https://github.com/physical168/kv-compression-benchmark.git"
+CE_REPO_URL = "https://github.com/GabrieleSanmartino/CompressionExperiments.git"
+BENCH_DIR = Path("/content/kv-compression-benchmark")
+CE_DIR = Path("/content/CompressionExperiments")
+PATCH_FILE = BENCH_DIR / "benchmarks" / "artwork_eval" / "llava_kvpress_patch.py"
 
 if not Path("/content").is_dir():
-    print("Step 1b: 非 Colab 环境，跳过 git clone。")
-elif _PATCH.is_file():
-    print("Step 1b: 已存在补丁文件，跳过:", _PATCH)
-elif CLONE_DIR.is_dir():
-    print("Step 1b: 目录已存在，尝试 git pull …")
-    r = subprocess.run(
-        ["git", "-C", str(CLONE_DIR), "pull", "--ff-only"],
-        capture_output=True,
-        text=True,
-    )
-    print(r.stdout or "", r.stderr or "", sep="")
-    if not _PATCH.is_file():
-        print(
-            "Step 1b: pull 后仍缺少补丁，请删除后重试 clone：",
-            CLONE_DIR,
-            file=sys.stderr,
-        )
-        raise FileNotFoundError(str(_PATCH))
+    print("Non-Colab environment: skipping clone/install.")
 else:
-    print("Step 1b: git clone（浅克隆）…")
-    subprocess.check_call(
-        ["git", "clone", "--depth", "1", REPO_URL, str(CLONE_DIR)]
-    )
-    if not _PATCH.is_file():
-        raise FileNotFoundError(f"clone 完成但仍缺少: {_PATCH}")
+    if not BENCH_DIR.is_dir():
+        print("Cloning benchmark repo...")
+        subprocess.check_call(["git", "clone", "--depth", "1", BENCH_REPO_URL, str(BENCH_DIR)])
+    else:
+        print("Benchmark repo exists:", BENCH_DIR)
 
-print("Step 1b OK:", CLONE_DIR if Path("/content").is_dir() else "skipped")
+    if not CE_DIR.is_dir():
+        print("Cloning CompressionExperiments repo...")
+        subprocess.check_call(["git", "clone", "--depth", "1", CE_REPO_URL, str(CE_DIR)])
+    else:
+        print("CompressionExperiments repo exists:", CE_DIR)
+
+    # Ensure submodules (kvpress is a submodule in CE)
+    subprocess.check_call(["git", "-C", str(CE_DIR), "submodule", "update", "--init", "--recursive"])
+    kvpress_path = CE_DIR / "kvpress"
+    if not kvpress_path.is_dir():
+        raise FileNotFoundError(f"kvpress submodule not found: {kvpress_path}")
+
+    print("Installing kvpress from CE repo:", kvpress_path)
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "-e", str(kvpress_path)])
+
+    if not PATCH_FILE.is_file():
+        raise FileNotFoundError(f"Missing patch file: {PATCH_FILE}")
+
+    print("Step 1b complete.")
 """
         ),
         md(
-            """### Step 2 — Mount Google Drive & set paths
+            """### Step 2 — Mount Drive and configure paths
 
-**`REPO_DIR` 解析**：在 Colab 上会依次查找 **`benchmarks/artwork_eval/llava_kvpress_patch.py`**  
-① `Google Drive/kv-compression-benchmark/`（若你已同步完整仓库）  
-② **`/content/kv-compression-benchmark/`**（Step 1b 克隆）  
-若两处都没有补丁文件，会**告警**并选用可用路径（请确保至少完成 Step 1b 或 Drive 同步）。
-
-**`RUN_DIR`**：默认仍把运行结果写到 Drive 的 `kv-compression-benchmark/artwork_eval_runs/`（若已挂载）；否则写到 `/content/artwork_eval_workspace/`。
+Path priority on Colab:
+1) `/content/drive/MyDrive/kv-compression-benchmark`
+2) `/content/kv-compression-benchmark` (from Step 1b)
 """
         ),
         code(
@@ -255,7 +236,7 @@ if RUN_ON_COLAB:
     else:
         REPO_DIR = _drive_repo if _drive_repo.is_dir() else _clone_repo if _clone_repo.is_dir() else Path("/content")
         print(
-            "WARN: 未找到", PATCH_REL, "— 请先运行 Step 1b，或将完整仓库放到",
+            "WARN: could not find", PATCH_REL, "- run Step 1b or copy full repo to",
             _drive_repo,
         )
 else:
@@ -280,14 +261,10 @@ print("IMAGES_DIR         :", IMAGES_DIR.resolve())
 """
         ),
         md(
-            """### Step 3 — Load model + kvpress / Llava patches
+            """### Step 3 — Load model and apply Llava/kvpress patches
 
-与 **CompressionExperiments** 的 `engine.py` 一致：在加载 **LlavaNext** 后应用
-`DynamicCache` / `BasePress.forward_hook` / `language_model` 等补丁，便于 **ExpectedAttention**、
-**KVzip**、**Finch** 在 transformers 5.x 下工作。
-
-> **Prerequisite**: Step 1（或已跳过）→ **Step 1b（Colab clone）**→ **Step 2** → 本格。  
-> 若 OOM 或断连重启：下次 **Step 2 → Step 3 → Step 4**（Colab 勿忘 **Step 1b** 若 `/content` 已清空）。
+This applies compatibility patches from `benchmarks/artwork_eval/llava_kvpress_patch.py`
+so kvpress works with Llava + transformers 5.x.
 """
         ),
         code(
@@ -298,7 +275,7 @@ import transformers
 from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration, BitsAndBytesConfig
 
 if "REPO_DIR" not in globals():
-    raise RuntimeError("请先运行 Step 2 定义 REPO_DIR / RUN_DIR。")
+    raise RuntimeError("Run Step 2 first (REPO_DIR / RUN_DIR are missing).")
 
 print("transformers:", transformers.__version__)
 
@@ -335,15 +312,14 @@ import importlib.util
 _art_eval = REPO_DIR / "benchmarks" / "artwork_eval"
 _patch_py = _art_eval / "llava_kvpress_patch.py"
 if not _patch_py.is_file():
-    # 不要用引号内的 \\n（notebook 按行存储时会把模板从字面换行处切断，导致 SyntaxError）
     _nl = chr(10)
     raise FileNotFoundError(
-        "找不到补丁文件: "
+        "Missing patch file: "
         + str(_patch_py.resolve())
         + _nl
-        + "Colab 需要 benchmarks/artwork_eval/llava_kvpress_patch.py。"
+        + "Expected: benchmarks/artwork_eval/llava_kvpress_patch.py"
         + _nl
-        + "请运行 Step 1b，或将仓库放到 Drive/kv-compression-benchmark（或 /content/kv-compression-benchmark）。"
+        + "Run Step 1b or place full repo in Drive."
     )
 _spec = importlib.util.spec_from_file_location("llava_kvpress_patch", _patch_py)
 _llava_patch = importlib.util.module_from_spec(_spec)
@@ -355,13 +331,13 @@ print("Model ready + kvpress patches:", MODEL_ID, "| MODEL_TAG:", MODEL_TAG)
 """
         ),
         md(
-            """### Step 4 — 实验配置（与 CE 一致的目录与 press 名）
+            """### Step 4 — Experiment configuration
 
-- **RESULTS_ROOT** = `RUN_DIR / "results"`，其下 **`artwork / MODEL_TAG / PressClass / 0.xx / results.csv`**。
-- **PRESS_NAMES**：类名字符串列表（如 `ExpectedAttentionPress`），与 `evaluation_config` / GT 评测一致。
-- 可选打开 **KVzipPress** / **FinchPress**（需本机环境支持；Finch 会在每次推理前 `update_model_and_tokenizer`）。
+- **RESULTS_ROOT**: `RUN_DIR / "results"` with CE layout
+- **PRESS_NAMES**: class names written to `press` column
+- Toggle KVzip / Finch if needed
 
-内核重启后请 **Step 2 → Step 3 → Step 4**。
+After runtime restart, rerun Step 2 -> Step 3 -> Step 4.
 """
         ),
         code(
@@ -378,17 +354,17 @@ import yaml
 from PIL import Image
 
 if "RUN_DIR" not in globals() or "MODEL_TAG" not in globals():
-    raise RuntimeError("请先顺序运行 Step 2、Step 3。")
+    raise RuntimeError("Run Step 2 and Step 3 first.")
 
 DATASET_NAME = "artwork"
 RESULTS_ROOT = RUN_DIR / "results"
 RESULTS_ROOT.mkdir(parents=True, exist_ok=True)
 
-MAX_ROWS = 0  # 0 = 全表；否则 head(MAX_ROWS)
+MAX_ROWS = 0  # 0 means full dataset; otherwise head(MAX_ROWS)
 MAX_NEW_TOKENS = 50
 COMPRESSION_RATIOS = [0.4, 0.8, 0.95]
 
-# 与 CE PRESS_REGISTRY 键一致（写入 results.csv 的 press 列）
+# Keep names aligned with CE PRESS_REGISTRY keys.
 PRESS_NAMES = ["ExpectedAttentionPress"]
 ENABLE_KVZIP_ON_LLAVA = False
 ENABLE_FINCH_ON_LLAVA = False
@@ -398,7 +374,7 @@ if ENABLE_KVZIP_ON_LLAVA and "KVzipPress" not in PRESS_NAMES:
 if ENABLE_FINCH_ON_LLAVA and "FinchPress" not in PRESS_NAMES:
     PRESS_NAMES = PRESS_NAMES + ["FinchPress"]
 
-# ---- 与 engine.run_single 一致的 image extract 后缀 ----
+# Same image extract suffix as CE engine.run_single
 _IMAGE_EXTRACT_SUFFIX = (
     " (be concise, no explanation, no introductory text, just the answer,"
     " output datatype: STRING, do not repeat the datatype in the answer) ?"
@@ -438,16 +414,10 @@ def save_results_ce_style(df: pd.DataFrame, base_dir: Path, dataset: str, model_
 """
         ),
         md(
-            """### Step 5 — 构建记录与问句（问句与评测 YAML **完全一致**）
+            """### Step 5 — Build records and query plan
 
-**Filter / Extract 的问句字符串**从 **`evaluation_config.yaml`** 的 `artwork.filter_query_mapping` /
-`extract_query_mapping` 读取（与 Step 8 `EvaluationManager` 匹配用的键相同），避免与
-`image_queries.yaml` 手写不一致导致「评测 0 行」。
-
-`record_id` 与 **CompressionExperiments** 的 `load_dataset` 一致：`paintings.csv` 行序下 **0…N-1**
-（与 `ground_truth/query_*.csv` 的 `_index_artworks` 对齐）。
-
-列名 `image_url` 等仍从 **`image_queries.yaml`** 读取。图片路径：先试 URL 解码文件名，再试 `%20` 字面名。
+Filter/extract query strings are loaded from `evaluation_config.yaml`
+(single source of truth for evaluation matching).
 """
         ),
         code(
@@ -498,10 +468,9 @@ print("Total (record × query) pairs:", len(df) * len(queries_plan))
 """
         ),
         md(
-            """### Step 6 — 单次推理（chat template + kvpress context）
+            """### Step 6 — Single inference helper
 
-用户消息文本 = **Step 4** 的 `build_answer_prefix(...)`（与 CE `CompressionEngine.run_single` 中
-`answer_prefix` 一致）。图像经 processor 与 CE 的 image 管线一致地放入 user turn。
+Prompts follow CE `CompressionEngine.run_single` formatting.
 """
         ),
         code(
@@ -548,12 +517,12 @@ def run_generate_vision(
 """
         ),
         md(
-            """### Step 7 — 全量推理并写入 CE 风格 results 树
+            """### Step 7 — Run all queries and save CE-style results
 
-对每个 **press × ratio**：跑完所有 `(record_id, query)` 后写一份 **`results.csv`**
-（列：`record_id`, `query`, `press`, `ratio`, `answer`）。
-
-若某行图片不存在则跳过该 record 的全部 query（不写入占位符，与「无结果」区分）。
+For each `(press, ratio)`, the notebook writes:
+`results/artwork/{model_tag}/{press}/{ratio}/results.csv`
+with columns:
+`record_id, query, press, ratio, answer`.
 """
         ),
         code(
@@ -600,19 +569,15 @@ print("rows written:", len(out_df), "| skip_missing_image_records:", n_skip_miss
 if len(out_df):
     save_results_ce_style(out_df, RESULTS_ROOT, DATASET_NAME, MODEL_TAG)
 else:
-    print("无有效行：请检查 IMAGES_DIR 与 paintings 中 URL 对应文件名。")
+    print("No valid rows written. Check image paths under IMAGES_DIR.")
     print("RESULTS_ROOT:", RESULTS_ROOT)
 """
         ),
         md(
-            """### Step 8 — 与 CE ``evaluate.py`` 相同的 P/R/F1 汇总
+            """### Step 8 — CE-style evaluation (P/R/F1)
 
-使用 **`benchmarks/artwork_eval/evaluation/evaluator.py`** 的 `EvaluationManager`，对
-**`RESULTS_ROOT`** 下所有 **`results.csv`** 扫一遍，对齐 **`evaluation_config.yaml`** 中的
-query 文本与 **`ground_truth/query_*.csv`**。
-
-也可在仓库根执行：
-`python benchmarks/artwork_eval/evaluate.py --results-dir <你的 RUN_DIR>/results`
+This cell evaluates all `results.csv` files under `RESULTS_ROOT`
+using `benchmarks/artwork_eval/evaluation/EvaluationManager`.
 """
         ),
         code(
@@ -624,23 +589,23 @@ from pathlib import Path
 import pandas as pd
 
 if "RESULTS_ROOT" not in globals():
-    raise RuntimeError("请先运行 Step 4 与 Step 7。")
+    raise RuntimeError("Run Step 4 and Step 7 first.")
 
-# —— 诊断：空结果时看这里 ——
+# Diagnostics for empty evaluation output
 print("RESULTS_ROOT =", str(RESULTS_ROOT), "| exists:", os.path.isdir(RESULTS_ROOT))
 _rroot = Path(RESULTS_ROOT)
 _csvs = sorted(_rroot.rglob("results.csv")) if _rroot.is_dir() else []
-print("results.csv 文件数:", len(_csvs))
+print("results.csv count:", len(_csvs))
 for _p in _csvs[:5]:
     print(" ", _p)
-    print("   路径末 5 段 (应为 .../artwork/<model>/<press>/<ratio>/results.csv):", _p.parts[-5:])
+    print("   last 5 path parts:", _p.parts[-5:])
 if _csvs:
     _s0 = pd.read_csv(_csvs[0])
-    print("示例 CSV 列名:", list(_s0.columns), "行数:", len(_s0))
+    print("sample CSV columns:", list(_s0.columns), "rows:", len(_s0))
     if "query" in _s0.columns:
-        print("示例 query 前 2 个:", _s0["query"].astype(str).head(2).tolist())
+        print("first 2 queries:", _s0["query"].astype(str).head(2).tolist())
 else:
-    print("未找到任何 results.csv：请确认 Step 7 已运行且 save_results_ce_style 已执行。")
+    print("No results.csv found. Run Step 7 first.")
 
 _ae = REPO_DIR / "benchmarks" / "artwork_eval"
 sys.path.insert(0, str(_ae))
@@ -653,8 +618,11 @@ mgr = EvaluationManager(
 ev_df = mgr.evaluate_all()
 if ev_df.empty:
     print(
-        "未得到任何评测行。常见原因：① Step 7 未写出 CSV；② RESULTS_ROOT 不对；③ 路径深度不对（需要 …/results/artwork/<model>/<press>/<ratio>/results.csv）；"
-        "④ 旧 runs 的 query 列与 evaluation_config 不一致（请用当前笔记本 Step 5 重跑 Step 7）。"
+        "No evaluation rows produced. Common causes: "
+        "(1) Step 7 did not write CSV files, "
+        "(2) RESULTS_ROOT is wrong, "
+        "(3) path depth is wrong (expected .../results/artwork/<model>/<press>/<ratio>/results.csv), "
+        "(4) query strings in old runs do not match evaluation_config."
     )
 else:
     display(ev_df.head(20))
