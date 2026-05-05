@@ -17,8 +17,20 @@ import json
 from pathlib import Path
 
 
+def _cell_source(text: str) -> list[str]:
+    """Single multiline string per cell.
+
+    Do NOT use splitlines(): escaped ``\\n`` inside quotes can become real newlines in the
+    template string and split the *logical* Python line, producing invalid syntax in ipynb
+    (see Colab ``SyntaxError: unterminated string literal`` on ``+ \"`` fragments).
+    """
+    if not text.endswith("\n"):
+        text += "\n"
+    return [text]
+
+
 def md(text: str) -> dict:
-    return {"cell_type": "markdown", "metadata": {}, "source": text.splitlines(keepends=True)}
+    return {"cell_type": "markdown", "metadata": {}, "source": _cell_source(text)}
 
 
 def code(text: str) -> dict:
@@ -27,7 +39,7 @@ def code(text: str) -> dict:
         "execution_count": None,
         "metadata": {},
         "outputs": [],
-        "source": text.splitlines(keepends=True),
+        "source": _cell_source(text),
     }
 
 
