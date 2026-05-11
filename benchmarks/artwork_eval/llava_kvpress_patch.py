@@ -12,7 +12,10 @@ import logging
 import torch
 from transformers import DynamicCache
 
-from kvpress import BasePress
+try:
+    from kvpress import BasePress
+except ImportError:
+    from kvpress.presses.base_press import BasePress
 
 logger = logging.getLogger(__name__)
 
