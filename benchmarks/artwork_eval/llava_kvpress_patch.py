@@ -7,17 +7,84 @@ and ``_patch_llava_for_kvpress`` (language_model alias, config fields, input_ids
 
 from __future__ import annotations
 
+import importlib.util
+import inspect
 import logging
+from pathlib import Path
 
 import torch
 from transformers import DynamicCache
 
-try:
-    from kvpress import BasePress
-except ImportError:
-    from kvpress.presses.base_press import BasePress
-
 logger = logging.getLogger(__name__)
+
+
+def _resolve_base_press():
+    """Resolve BasePress across kvpress layouts (PyPI, NVIDIA repo, CE submodule quirks)."""
+    try:
+        from kvpress import BasePress as BP  # type: ignore[attr-defined]
+
+        return BP
+    except ImportError:
+        pass
+    try:
+        from kvpress.presses.base_press import BasePress as BP  # type: ignore[import-not-found]
+
+        return BP
+    except ImportError:
+        pass
+
+    # Slim / partial installs: load base_press.py next to KVzipPress, or take BasePress from MRO.
+    try:
+        from kvpress import KVzipPress
+    except ImportError as e:
+        raise ImportError(
+            "kvpress is present but BasePress cannot be resolved and KVzipPress is not importable. "
+            "Reinstall kvpress from NVIDIA/kvpress (or CE submodule with full `presses/`)."
+        ) from e
+
+    kvzip_file = Path(inspect.getfile(KVzipPress)).resolve()
+    for candidate in (
+        kvzip_file.parent / "base_press.py",
+        kvzip_file.parent.parent / "presses" / "base_press.py",
+    ):
+        if not candidate.is_file():
+            continue
+        spec = importlib.util.spec_from_file_location("_kvpress_base_press_dyn", candidate)
+        if spec is None or spec.loader is None:
+            continue
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        if hasattr(mod, "BasePress"):
+            logger.debug("Loaded BasePress from %s", candidate)
+            return mod.BasePress
+
+    for cls in KVzipPress.__mro__:
+        if cls.__name__ == "BasePress":
+            logger.debug("Resolved BasePress from KVzipPress.__mro__")
+            return cls
+
+    try:
+        import kvpress as _kp
+
+        _root = Path(inspect.getfile(_kp))
+        if _root.name == "__init__.py":
+            _root = _root.parent
+        for p in sorted(_root.rglob("base_press.py")):
+            spec = importlib.util.spec_from_file_location("_kvpress_base_press_rglob", p)
+            if spec is None or spec.loader is None:
+                continue
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            if hasattr(mod, "BasePress"):
+                logger.debug("Loaded BasePress from %s (package scan)", p)
+                return mod.BasePress
+    except Exception:
+        pass
+
+    raise ImportError(
+        "Could not locate BasePress (tried kvpress import, kvpress.presses.base_press, "
+        "base_press.py beside KVzipPress, KVzipPress MRO, and package tree scan)."
+    )
 
 
 class _CacheListProxy:
@@ -62,6 +129,7 @@ def _patch_dynamic_cache_for_kvpress() -> None:
 
 
 def _patch_base_press_for_transformers5() -> None:
+    BasePress = _resolve_base_press()
     _orig = BasePress.forward_hook
 
     def _forward_hook(self, module, input, kwargs, output):
