@@ -1,0 +1,13 @@
+press,ratio,mean_f1,n_queries,plot_label
+ExpectedAttentionPress,0.4,0.621135,20,EA (ExpectedAttention)
+ExpectedAttentionPress,0.8,0.632915,20,EA (ExpectedAttention)
+ExpectedAttentionPress,0.95,0.631285,20,EA (ExpectedAttention)
+Finch_CPT,0.4,0.407095,20,Finch + CPT
+Finch_CPT,0.8,0.328895,20,Finch + CPT
+Finch_CPT,0.95,0.25908,20,Finch + CPT
+Finch_Full,0.4,0.534355,20,Finch (no CPT)
+Finch_Full,0.8,0.34418,20,Finch (no CPT)
+Finch_Full,0.95,0.39274,20,Finch (no CPT)
+KVzip,0.4,0.63864,20,KVzip
+KVzip,0.8,0.6461,20,KVzip
+KVzip,0.95,0.6461,20,KVzip

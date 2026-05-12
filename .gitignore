@@ -53,7 +53,8 @@ movie-results/
 movie-results.zip
 reviews_1000.csv
 benchmark_runs.csv
-figures/
+# Only ignore figures at repo root (not benchmarks/**/figures used for artwork plots)
+/figures/
 extract_eval_output/
 **/extract_predictions_checkpoint.csv
 **/extract_runs.csv

@@ -1,0 +1,61 @@
+dataset,model_tag,press,ratio,query,query_id,query_type,precision,recall,f1,support,unresolved
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Does this painting depict Madonna and Child?,query_000,filter,0.6667,1.0,0.8,17,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Does this painting depict more than two people?,query_001,filter,0.6,1.0,0.75,32,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Does this painting depict more than three people?,query_002,filter,0.6,1.0,0.75,31,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Does this painting depict saints identifiable by their halos?,query_003,filter,1.0,1.0,1.0,34,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Does this painting depict a scene in which death is a dominant theme?,query_004,filter,0.8,1.0,0.8889,18,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Does this painting depict a religious scene?,query_005,filter,1.0,0.8571,0.9231,49,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Does this painting show a still life?,query_006,filter,0.0,0.0,0.0,1,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Does this painting depict a scene of war?,query_007,filter,0.5,1.0,0.6667,3,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Does this painting depict an angel with wings?,query_008,filter,0.5,0.5,0.5,17,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Does this painting depict a crucifixion scene?,query_009,filter,1.0,1.0,1.0,9,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Extract the number of people depicted in this painting.,query_028,extract,0.2,0.16,0.1778,65,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,"Extract the primary background color of this painting. Choose from Red, Blue, Yellow, Green, Orange, Purple, Black, White.",query_030,extract,0.9,0.7333,0.76,65,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Extract the number of saints with halos from this painting.,query_031,extract,0.4167,0.5556,0.4762,65,1
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Extract the number of animals from this painting.,query_032,extract,0.5833,0.5,0.5079,65,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Extract the gender of the main character from this painting. (male / female / undefined),query_034,extract,1.0,1.0,1.0,65,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Extract the type of setting of this painting. (interior / exterior / undefined),query_042,extract,0.8,0.8,0.75,65,1
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Extract the dominant material depicted in this painting. (stone / wood / metal / fabric / undefined),query_043,extract,0.1667,0.3333,0.2222,65,1
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Extract the approximate lighting type in this painting. (natural / candle / undefined),query_047,extract,0.0476,0.3333,0.0833,65,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Extract the level of movement in this painting. (static / moderate / dynamic),query_048,extract,0.6667,0.75,0.5833,65,4
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.4,Extract the landscape type depicted in this painting. (mountain / forest / sea / plain / undefined),query_049,extract,1.0,0.4167,0.5833,65,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Does this painting depict Madonna and Child?,query_000,filter,0.6667,1.0,0.8,17,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Does this painting depict more than two people?,query_001,filter,0.6,1.0,0.75,32,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Does this painting depict more than three people?,query_002,filter,0.6,1.0,0.75,31,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Does this painting depict saints identifiable by their halos?,query_003,filter,1.0,1.0,1.0,34,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Does this painting depict a scene in which death is a dominant theme?,query_004,filter,0.8,1.0,0.8889,18,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Does this painting depict a religious scene?,query_005,filter,1.0,0.8571,0.9231,49,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Does this painting show a still life?,query_006,filter,0.0,0.0,0.0,1,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Does this painting depict a scene of war?,query_007,filter,0.5,1.0,0.6667,3,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Does this painting depict an angel with wings?,query_008,filter,0.5,0.5,0.5,17,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Does this painting depict a crucifixion scene?,query_009,filter,1.0,1.0,1.0,9,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Extract the number of people depicted in this painting.,query_028,extract,0.2,0.16,0.1778,65,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,"Extract the primary background color of this painting. Choose from Red, Blue, Yellow, Green, Orange, Purple, Black, White.",query_030,extract,0.9,0.7333,0.76,65,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Extract the number of saints with halos from this painting.,query_031,extract,0.4167,0.5556,0.4762,65,1
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Extract the number of animals from this painting.,query_032,extract,0.5833,0.5,0.5079,65,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Extract the gender of the main character from this painting. (male / female / undefined),query_034,extract,1.0,1.0,1.0,65,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Extract the type of setting of this painting. (interior / exterior / undefined),query_042,extract,0.8333,0.875,0.8286,65,3
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Extract the dominant material depicted in this painting. (stone / wood / metal / fabric / undefined),query_043,extract,0.1667,0.3333,0.2222,65,1
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Extract the approximate lighting type in this painting. (natural / candle / undefined),query_047,extract,0.037,0.3333,0.0667,65,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Extract the level of movement in this painting. (static / moderate / dynamic),query_048,extract,0.625,0.7,0.4857,65,3
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.8,Extract the landscape type depicted in this painting. (mountain / forest / sea / plain / undefined),query_049,extract,1.0,0.75,0.8545,65,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Does this painting depict Madonna and Child?,query_000,filter,0.6667,1.0,0.8,17,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Does this painting depict more than two people?,query_001,filter,0.5,1.0,0.6667,32,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Does this painting depict more than three people?,query_002,filter,0.6,1.0,0.75,31,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Does this painting depict saints identifiable by their halos?,query_003,filter,1.0,1.0,1.0,34,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Does this painting depict a scene in which death is a dominant theme?,query_004,filter,0.8,1.0,0.8889,18,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Does this painting depict a religious scene?,query_005,filter,1.0,0.8571,0.9231,49,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Does this painting show a still life?,query_006,filter,0.0,0.0,0.0,1,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Does this painting depict a scene of war?,query_007,filter,0.5,1.0,0.6667,3,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Does this painting depict an angel with wings?,query_008,filter,0.5,0.5,0.5,17,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Does this painting depict a crucifixion scene?,query_009,filter,1.0,1.0,1.0,9,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Extract the number of people depicted in this painting.,query_028,extract,0.25,0.1875,0.2143,65,2
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,"Extract the primary background color of this painting. Choose from Red, Blue, Yellow, Green, Orange, Purple, Black, White.",query_030,extract,0.9,0.7333,0.76,65,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Extract the number of saints with halos from this painting.,query_031,extract,0.3333,0.4444,0.3556,65,1
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Extract the number of animals from this painting.,query_032,extract,0.375,0.5,0.4286,65,1
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Extract the gender of the main character from this painting. (male / female / undefined),query_034,extract,1.0,1.0,1.0,65,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Extract the type of setting of this painting. (interior / exterior / undefined),query_042,extract,1.0,1.0,1.0,65,6
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Extract the dominant material depicted in this painting. (stone / wood / metal / fabric / undefined),query_043,extract,0.1667,0.3333,0.2222,65,1
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Extract the approximate lighting type in this painting. (natural / candle / undefined),query_047,extract,0.0417,0.3333,0.0741,65,0
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Extract the level of movement in this painting. (static / moderate / dynamic),query_048,extract,0.75,0.875,0.7619,65,4
+artwork,llama3-llava-next-8b-hf,ExpectedAttentionPress,0.95,Extract the landscape type depicted in this painting. (mountain / forest / sea / plain / undefined),query_049,extract,0.9,0.5,0.6136,65,0
