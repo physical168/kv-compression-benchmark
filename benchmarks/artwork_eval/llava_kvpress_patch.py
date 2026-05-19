@@ -180,6 +180,16 @@ def _patch_llava_for_kvpress(model) -> None:
     model.model.register_forward_pre_hook(_normalize_input_ids, with_kwargs=True)
 
 
+def apply_kvpress_patches_text_only() -> None:
+    """Apply DynamicCache + BasePress patches for text-only kvpress (Llama, Qwen, …).
+
+    Skips Llava-specific hooks and cuDNN toggling used for vision towers.
+    """
+
+    _patch_dynamic_cache_for_kvpress()
+    _patch_base_press_for_transformers5()
+
+
 def apply_kvpress_compatibility_patches(model) -> None:
     """Apply global transformers/kvpress patches and Llava-specific hooks on ``model``."""
     _patch_dynamic_cache_for_kvpress()
