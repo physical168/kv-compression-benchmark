@@ -20,12 +20,26 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+def _pin_cuda_visible_from_argv() -> None:
+    if "CUDA_VISIBLE_DEVICES" in os.environ:
+        return
+    dev = "0"
+    for i, a in enumerate(sys.argv):
+        if a == "--device-id" and i + 1 < len(sys.argv):
+            dev = sys.argv[i + 1]
+            break
+    os.environ["CUDA_VISIBLE_DEVICES"] = dev
+
+
+_pin_cuda_visible_from_argv()
+
 import pandas as pd
 import torch
 
 _BUNDLE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_BUNDLE))
 os.chdir(_BUNDLE)
+os.environ.setdefault("MOVIE_KV_PREGEN", "1")
 
 from kv_cache_text_qa_server_new import CPT_PATH, KvTextQaModelWrapper  # noqa: E402
 from text_kvpress_patch import apply_kvpress_patches_text_only  # noqa: E402

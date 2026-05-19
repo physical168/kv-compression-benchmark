@@ -1,12 +1,27 @@
 import argparse
 import json
+import os
 import yaml
 import asyncio
 import logging
 from tqdm import tqdm
-from flask import Flask, request
-from flask_restful import Resource, Api
 from typing import List
+
+# Movie batch pregen (run_movie_kv_pregen.py) does not need the HTTP server.
+_PREGEN_ONLY = os.environ.get("MOVIE_KV_PREGEN") == "1"
+if _PREGEN_ONLY:
+
+    class Resource:  # noqa: D101 — stub base for unused API classes
+        pass
+
+    Flask = Api = request = None  # type: ignore[misc, assignment]
+    app = api = None
+else:
+    from flask import Flask, request
+    from flask_restful import Api, Resource
+
+    app = Flask(__name__)
+    api = Api(app)
 
 
 from reasondb.backends.kv_cache_base import KVCachingBackendBase
@@ -15,7 +30,6 @@ import torch
 from kvpress import ExpectedAttentionPress, KeyRerotationPress, KVzipPress, FinchPress
 
 from transformers import DynamicCache, pipeline  # type: ignore
-import os
 import contextlib
 
 from reasondb.memory_footprint.memory_report import compute_memory_footprints, update_compressed_cache_footprint
@@ -23,9 +37,6 @@ from reasondb.memory_footprint.memory_report import compute_memory_footprints, u
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-app = Flask(__name__)
-api = Api(app)
 
 MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
 # MODEL_NAME = "meta-llama/Llama-3.1-70B-Instruct"
@@ -592,11 +603,13 @@ class KvTextQaModelWrapper(KVCachingBackendBase):
         """Initialize the text model pipeline and compression settings."""
         logger.info("Setting up KV Cache Text Filter...")
 
-        # Set up device
+        # Set up device (single GPU — avoid device_map="auto" splitting across cuda:0/1 on Kaggle)
         self.device = f"cuda:{self.device_id}" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            device_map: dict | str | None = {"": int(self.device_id)}
+        else:
+            device_map = None
 
-        # Initialize the pipeline
-        # args = [{"attn_implementation": "sdpa"}, {}]
         args = [
             {"attn_implementation": "flash_attention_2"},
             {"attn_implementation": "sdpa"},
@@ -605,14 +618,16 @@ class KvTextQaModelWrapper(KVCachingBackendBase):
         self.pipe = None
         for x in args:
             try:
-                self.pipe = pipeline(
-                    "kv-press-text-generation",  # type: ignore
-                    model=self.model_name,
-                    # device=self.device,
-                    device_map="auto",
-                    torch_dtype=torch.bfloat16,
-                    model_kwargs=x,  # type: ignore
-                )
+                pipe_kw: dict = {
+                    "model": self.model_name,
+                    "torch_dtype": torch.bfloat16,
+                    "model_kwargs": x or None,
+                }
+                if device_map is not None:
+                    pipe_kw["device_map"] = device_map
+                else:
+                    pipe_kw["device"] = self.device
+                self.pipe = pipeline("kv-press-text-generation", **pipe_kw)  # type: ignore
                 break
             except Exception as e:
                 logger.warning(
@@ -1279,11 +1294,14 @@ class TextQA(Resource):
         return responses, 200
 
 
-api.add_resource(Status, "/status")
-api.add_resource(TextQA, "/text_qa")
-api.add_resource(PrepareCaches, "/prepare_caches")
+if not _PREGEN_ONLY:
+    api.add_resource(Status, "/status")
+    api.add_resource(TextQA, "/text_qa")
+    api.add_resource(PrepareCaches, "/prepare_caches")
 
 if __name__ == "__main__":
+    if _PREGEN_ONLY:
+        raise SystemExit("Set MOVIE_KV_PREGEN=0 to run the HTTP server, or use run_movie_kv_pregen.py")
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--device-id",
