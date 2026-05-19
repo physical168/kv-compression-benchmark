@@ -573,8 +573,10 @@ def main() -> None:
     )
     pipe.model.eval()
     apply_kvpress_patches_text_only()
-    if run_tag_mode and args.kvzip_patch:
-        apply_kvzip_quantized_layer_patch()
+    # BasePress hook patch is used by EA (KeyRerotation+EA) and KVzip on Qwen + transformers 5.x.
+    if run_tag_mode and args.kvzip_patch and args.run_tags:
+        if any(t in ("ea", "kvzip") for t in args.run_tags):
+            apply_kvzip_quantized_layer_patch()
     if run_tag_mode and any(t in args.run_tags for t in ("finch_no_cpt", "finch_with_cpt")):
         apply_finch_press_hook_fix()
 
@@ -672,6 +674,15 @@ def main() -> None:
                     err_msg = repr(e)
                     logger.exception("prepare_movie_caches_run_tag failed: %s", e)
                     stats = {"written": 0, "skipped": 0, "failed": 0, "errors": 0}
+                elif stats.get("failed", 0) > 0:
+                    status = "partial"
+                    err_msg = f"{stats['failed']} row(s) failed; see ERRORS.json in comp dir"
+                    logger.warning(
+                        "run_tag=%s ratio=%s finished with %s failures",
+                        run_tag,
+                        cr,
+                        stats["failed"],
+                    )
                 append_checkpoint(
                     compression_ratio=float(cr),
                     stats=stats,
@@ -679,7 +690,7 @@ def main() -> None:
                     err_msg=err_msg,
                     run_tag=run_tag,
                 )
-                if status != "ok":
+                if status == "error":
                     raise SystemExit(f"KV pregen failed run_tag={run_tag} ratio={cr}: {err_msg}")
     else:
 
@@ -719,6 +730,9 @@ def main() -> None:
                     err_msg = repr(e)
                     logger.exception("prepare_movie_caches_legacy failed: %s", e)
                     stats = {"written": 0, "skipped": 0, "failed": 0, "errors": 0}
+                elif stats.get("failed", 0) > 0:
+                    status = "partial"
+                    err_msg = f"{stats['failed']} row(s) failed; see ERRORS.json in comp dir"
                 append_checkpoint(
                     compression_ratio=float(cr),
                     stats=stats,
@@ -727,7 +741,7 @@ def main() -> None:
                     use_cpt=use_cpt,
                     press_legacy=args.press,
                 )
-                if status != "ok":
+                if status == "error":
                     raise SystemExit(f"KV pregen failed ratio={cr} use_cpt={use_cpt}: {err_msg}")
 
     logger.info("Done.")
