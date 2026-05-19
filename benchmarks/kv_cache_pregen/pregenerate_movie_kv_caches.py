@@ -53,9 +53,7 @@ except ImportError:
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 
-_ARTWORK_EVAL = _HERE.parent / "artwork_eval"
-sys.path.insert(0, str(_ARTWORK_EVAL))
-from llava_kvpress_patch import apply_kvpress_patches_text_only  # noqa: E402
+from text_kvpress_patch import apply_kvpress_patches_text_only  # noqa: E402
 
 from cache_io import (  # noqa: E402
     compression_tag,
