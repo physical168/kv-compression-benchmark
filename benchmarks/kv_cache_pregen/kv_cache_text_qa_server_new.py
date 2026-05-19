@@ -536,6 +536,58 @@ class KvTextQaModelWrapper(KVCachingBackendBase):
             else "0"
         )
 
+    def _run_kvpress_prefill(self, inputs, press, cache: DynamicCache) -> None:
+        """Prefill via kv-press pipeline (supports Qwen without ``output_attentions``)."""
+        with torch.inference_mode():
+            with (
+                press(self.pipe.model)
+                if press is not None
+                else contextlib.nullcontext()
+            ):
+                if hasattr(self.pipe, "_forward"):
+                    self.pipe._forward(inputs, press=press, cache=cache)
+                else:
+                    context_ids = inputs["context_ids"].to(
+                        next(self.pipe.model.parameters()).device
+                    )
+                    out_attn = (
+                        self.pipe.output_attentions(press)
+                        if hasattr(self.pipe, "output_attentions")
+                        else False
+                    )
+                    self.pipe.model.model(
+                        input_ids=context_ids,
+                        past_key_values=cache,
+                        use_cache=True,
+                        output_attentions=out_attn,
+                    )
+
+    def _trim_finch_window_cache(self, cache: DynamicCache, window_size: int) -> None:
+        if window_size <= 0:
+            return
+        if hasattr(cache, "layers") and cache.layers:
+            for layer in cache.layers:
+                layer.keys = layer.keys[:, :, :-window_size, :].contiguous()
+                layer.values = layer.values[:, :, :-window_size, :].contiguous()
+        elif hasattr(cache, "key_cache") and cache.key_cache:
+            cache.key_cache = [
+                k[:, :, :-window_size, :].contiguous() for k in cache.key_cache
+            ]
+            cache.value_cache = [
+                v[:, :, :-window_size, :].contiguous() for v in cache.value_cache
+            ]
+
+    def _save_dynamic_cache(self, cache: DynamicCache, cache_filename: str) -> None:
+        if hasattr(cache, "layers") and cache.layers:
+            for layer in cache.layers:
+                layer.keys = layer.keys.detach().cpu()
+                layer.values = layer.values.detach().cpu()
+        elif hasattr(cache, "key_cache") and cache.key_cache:
+            cache.key_cache = [k.detach().cpu() for k in cache.key_cache]
+            cache.value_cache = [v.detach().cpu() for v in cache.value_cache]
+        os.makedirs(os.path.dirname(cache_filename), exist_ok=True)
+        torch.save(cache, cache_filename)
+
     def init(self):
         """Initialize the text model pipeline and compression settings."""
         logger.info("Setting up KV Cache Text Filter...")
@@ -545,7 +597,11 @@ class KvTextQaModelWrapper(KVCachingBackendBase):
 
         # Initialize the pipeline
         # args = [{"attn_implementation": "sdpa"}, {}]
-        args = [{"attn_implementation": "flash_attention_2"}, {}]
+        args = [
+            {"attn_implementation": "flash_attention_2"},
+            {"attn_implementation": "sdpa"},
+            {},
+        ]
         self.pipe = None
         for x in args:
             try:
@@ -1117,44 +1173,18 @@ class KvTextQaModelWrapper(KVCachingBackendBase):
                 press.update_model_and_tokenizer(self.pipe.model, self.pipe.tokenizer)
             
             cache = DynamicCache()
-            
-            #----------------------------------------------------------------
-            first_device = next(self.pipe.model.parameters()).device
-            context_ids = context_ids.to(first_device)
-            #----------------------------------------------------------------
+            logger.info(
+                f"Generating cache for text with initial length {context_ids.shape[1]} tokens"
+            )
+            self._run_kvpress_prefill(inputs, press, cache)
 
-            logger.info(f"Generating cache for text with initial length {context_ids.shape[1]} tokens")
-            with torch.inference_mode():
-                with (
-                    press(self.pipe.model)
-                    if press is not None
-                    else contextlib.nullcontext()
-                ):
-                    # Run the model without the lm head for pre-filling
-                    self.pipe.model.model(
-                        input_ids=context_ids,
-                        past_key_values=cache,
-                        use_cache=True,
-                        output_attentions=self.pipe.output_attentions(press),
-                    )
-
-            # For Finch: Remove window tokens from cache (keep only compressed context)
-            # The window guides compression but should not be stored
-            if self.press_name in ("finch", "finch-cachenotes") and press is not None and hasattr(press, 'window_size'):
-                window_size = press.window_size
-                if window_size is not None and window_size > 0:
-                    # Trim the last window_size tokens from each cache layer
-                    cache.key_cache = [k[:, :, :-window_size, :] for k in cache.key_cache]
-                    cache.value_cache = [v[:, :, :-window_size, :] for v in cache.value_cache]
-
-            # Save cache to disk
-            cache.key_cache = [k.detach().cpu() for k in cache.key_cache]
-            cache.value_cache = [v.detach().cpu() for v in cache.value_cache]
+            if self.press_name in ("finch", "finch-cachenotes") and press is not None:
+                ws = getattr(press, "window_size", None)
+                if ws is not None and int(ws) > 0:
+                    self._trim_finch_window_cache(cache, int(ws))
 
             logger.info(f"Saving cache to: {cache_filename}")
-
-            os.makedirs(os.path.dirname(cache_filename), exist_ok=True)
-            torch.save(cache, cache_filename)
+            self._save_dynamic_cache(cache, cache_filename)
 
             if not os.path.exists(cache_filename):
                 logger.error(f"Cache file was not actually created: {cache_filename}")
