@@ -672,7 +672,7 @@ def main() -> None:
                     err_msg = repr(e)
                     logger.exception("prepare_movie_caches_run_tag failed: %s", e)
                     stats = {"written": 0, "skipped": 0, "failed": 0, "errors": 0}
-                elif stats.get("failed", 0) > 0:
+                if status == "ok" and stats.get("failed", 0) > 0:
                     status = "partial"
                     err_msg = f"{stats['failed']} row(s) failed; see ERRORS.json in comp dir"
                     logger.warning(
@@ -728,7 +728,7 @@ def main() -> None:
                     err_msg = repr(e)
                     logger.exception("prepare_movie_caches_legacy failed: %s", e)
                     stats = {"written": 0, "skipped": 0, "failed": 0, "errors": 0}
-                elif stats.get("failed", 0) > 0:
+                if status == "ok" and stats.get("failed", 0) > 0:
                     status = "partial"
                     err_msg = f"{stats['failed']} row(s) failed; see ERRORS.json in comp dir"
                 append_checkpoint(
