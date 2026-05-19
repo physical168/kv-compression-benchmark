@@ -1,0 +1,2 @@
+queries:
+  - "Classify the movie review sentiment. Answer with one word only: positive or negative."
